@@ -913,28 +913,33 @@ html, body {
         <div class="pdv-stats-row" id="pvStats"></div>
       </div>
       <div class="tabs">
-        <div class="tab active" onclick="switchTab(this,'tabChat')">💬 WhatsApp</div>
+        <div class="tab active" onclick="switchTab(this,'tabChat')">✅ Tareas</div>
         <div class="tab" onclick="switchTab(this,'tabPedidos')">📦 Pedidos</div>
         <div class="tab" onclick="switchTab(this,'tabCobranza')">💰 Cobranza</div>
         <div class="tab" onclick="switchTab(this,'tabInfo')">📋 Info</div>
       </div>
 
-      <!-- Tab Chat -->
+      <!-- Tab Tasks -->
       <div id="tabChat" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
-        <div class="chat-toolbar" style="display:flex;justify-content:space-between;align-items:center;padding:8px 20px 0">
-          <div style="display:flex;align-items:center;gap:6px">
-            <button class="btn btn-wa" style="font-size:11px;padding:5px 10px" onclick="sincronizarMensajes()">🔄 Sincronizar</button>
-            <span id="syncStatus" style="font-size:11px;color:var(--text-muted)"></span>
-          </div>
-          <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;color:var(--red);border-color:var(--red)" onclick="vaciarChat()">🗑 Vaciar chat</button>
+
+        <!-- Toolbar -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px 8px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:12px;color:var(--text-muted)" id="taskCounter"></div>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red)" onclick="vaciarTareasCompletadas()">🗑 Vaciar completadas</button>
         </div>
-        <div style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:200px" id="chatMessages"></div>
-        <div class="template-btns" id="templateBtns"></div>
-        <div class="chat-input-area">
-          <textarea class="chat-input" id="chatInput" placeholder="Escribe un mensaje..." rows="1"
-            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
-          <button class="send-btn" onclick="sendMessage()">➤</button>
+
+        <!-- Input nueva tarea -->
+        <div style="padding:0 20px 10px;display:flex;gap:8px">
+          <input id="taskInput" type="text" placeholder="Nueva tarea para este PDV…"
+            style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 13px;color:var(--text);font-size:13px;outline:none;font-family:inherit"
+            onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'"
+            onkeydown="if(event.key==='Enter')agregarTarea()">
+          <button class="btn btn-primary" style="padding:9px 14px" onclick="agregarTarea()">+ Agregar</button>
         </div>
+
+        <!-- Lista de tareas -->
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px" id="tasksList"></div>
+
       </div>
 
       <!-- Tab Pedidos -->
@@ -1800,70 +1805,112 @@ function selectPDV(id) {
   setMobileNav('pdvs');
 }
 
-function renderChat() {
+// ══════════════════════════════════════════
+//  TASKS — Tareas por PDV
+// ══════════════════════════════════════════
+
+function renderChat() { renderTasks(); } // alias para compatibilidad
+
+function renderTasks() {
   if (!activePDV) return;
-  const cont = document.getElementById('chatMessages');
-  const chat = activePDV.chat || [];
-  if (chat.length === 0) {
-    cont.innerHTML = `<div class="empty-state"><div class="empty-state-icon">💬</div><div class="empty-state-text">Sin mensajes aún.<br>Inicia la conversación con ${activePDV.nombre}</div></div>`;
-  } else {
-    let lastDate = '';
-    cont.innerHTML = chat.map(m => {
-      let sep = '';
-      if (m.fecha !== lastDate) { lastDate = m.fecha; sep = `<div class="msg-date-sep">── ${m.fecha} ──</div>`; }
-      return `${sep}<div style="display:flex;flex-direction:column;align-items:${m.tipo==='out'?'flex-end':'flex-start'}">
-        <div class="msg-bubble ${m.tipo}">${m.texto}</div>
-        <div class="msg-time">${m.hora}</div>
-      </div>`;
-    }).join('');
+  const tasks = activePDV.tasks || [];
+  const cont  = document.getElementById('tasksList');
+  const counter = document.getElementById('taskCounter');
+  if (!cont) return;
+
+  const pendientes  = tasks.filter(t => !t.done);
+  const completadas = tasks.filter(t => t.done);
+
+  if (counter) {
+    counter.textContent = `${pendientes.length} pendiente${pendientes.length!==1?'s':''} · ${completadas.length} completada${completadas.length!==1?'s':''}`;
   }
-  cont.scrollTop = cont.scrollHeight;
-  const templates = [
-    {label:'📦 Reponer inventario', msg:`Buenos días, ¿les interesa reponer inventario de Santa Teresa esta semana? 🥃`},
-    {label:'💰 Recordar cobro',     msg:`Buen día, les escribo para coordinar el cobro pendiente. ¿Cuándo podemos cuadrar? 🙏`},
-    {label:'✅ Confirmar pedido',   msg:`Su pedido está confirmado y será entregado próximamente ✅`},
-    {label:'🎁 Promoción',          msg:`¡Tenemos promoción especial esta semana! Escríbeme para más detalles 🌟`},
-    {label:'⏰ En camino',           msg:`Buenos días, estoy en ruta y paso por su local en aproximadamente 1 hora ⏰`},
-  ];
-  window._chatTemplates = templates;
-  document.getElementById('templateBtns').innerHTML = templates.map((t,i) =>
-    `<div class="tpl-btn" onclick="usarTemplate(${i})">${t.label}</div>`).join('');
-}
 
-function usarTemplate(idx) {
-  const msg = window._chatTemplates?.[idx]?.msg;
-  if (!msg) return;
-  const input = document.getElementById('chatInput');
-  input.value = msg;
-  input.focus();
-}
+  if (tasks.length === 0) {
+    cont.innerHTML = `<div class="empty-state" style="padding:24px 0">
+      <div class="empty-state-icon">✅</div>
+      <div class="empty-state-text">Sin tareas para ${activePDV.nombre}.<br>Agrega una arriba.</div>
+    </div>`;
+    return;
+  }
 
-async function sendMessage() {
-  const input = document.getElementById('chatInput');
-  const text = input.value.trim();
-  if (!text || !activePDV) return;
-  const now = new Date();
-  const msg = {
-    tipo:'out', texto:text,
-    hora: now.toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'}),
-    fecha: now.toLocaleDateString('es-VE',{weekday:'short',day:'numeric',month:'short'})
+  const renderGroup = (list, titulo, esDone) => {
+    if (list.length === 0) return '';
+    return `
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px">${titulo}</div>
+      ${list.map(t => `
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:6px;${esDone?'opacity:.55':''}">
+          <input type="checkbox" ${t.done?'checked':''} onchange="toggleTarea('${t.id}')"
+            style="margin-top:2px;accent-color:var(--amber);width:15px;height:15px;cursor:pointer;flex-shrink:0">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;color:var(--text);${esDone?'text-decoration:line-through;color:var(--text-muted)':''};line-height:1.4;word-break:break-word">${t.texto}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:3px">${t.fecha}${t.hora?' · '+t.hora:''}</div>
+          </div>
+          <button onclick="eliminarTarea('${t.id}')" style="background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;padding:0 2px;flex-shrink:0" title="Eliminar">×</button>
+        </div>
+      `).join('')}
+    `;
   };
-  activePDV.chat.push(msg);
-  input.value = ''; renderChat();
-  await savemensaje(activePDV.id, msg);
-  logActivity('wa', `Mensaje enviado a <strong>${activePDV.nombre}</strong>`);
-  showToast('Mensaje registrado ✓');
+
+  cont.innerHTML =
+    renderGroup(pendientes,  '📌 Pendientes', false) +
+    renderGroup(completadas, '✅ Completadas', true);
 }
 
-async function vaciarChat() {
-  if (!activePDV) return;
-  if (!confirm(`¿Vaciar toda la conversación con ${activePDV.nombre}? Esta acción no se puede deshacer.`)) return;
-  showLoading('Borrando mensajes…');
-  await vaciarChatRemote(activePDV.id);
-  activePDV.chat = [];
-  hideLoading(); renderChat();
-  showToast('Conversación borrada');
+async function agregarTarea() {
+  const input = document.getElementById('taskInput');
+  const texto = input?.value.trim();
+  if (!texto || !activePDV) return;
+
+  if (!activePDV.tasks) activePDV.tasks = [];
+  const now = new Date();
+  const tarea = {
+    id:    'T' + Date.now(),
+    texto,
+    done:  false,
+    fecha: now.toLocaleDateString('es-VE', {day:'numeric', month:'short', year:'numeric'}),
+    hora:  now.toLocaleTimeString('es-VE', {hour:'2-digit', minute:'2-digit'})
+  };
+
+  activePDV.tasks.push(tarea);
+  input.value = '';
+  renderTasks();
+  await savePDV(activePDV);
+  logActivity('task', `Tarea agregada en <strong>${activePDV.nombre}</strong>: ${texto}`);
 }
+
+async function toggleTarea(id) {
+  if (!activePDV) return;
+  const t = (activePDV.tasks||[]).find(x => x.id === id);
+  if (!t) return;
+  t.done = !t.done;
+  renderTasks();
+  await savePDV(activePDV);
+}
+
+async function eliminarTarea(id) {
+  if (!activePDV) return;
+  activePDV.tasks = (activePDV.tasks||[]).filter(x => x.id !== id);
+  renderTasks();
+  await savePDV(activePDV);
+}
+
+async function vaciarTareasCompletadas() {
+  if (!activePDV) return;
+  const completadas = (activePDV.tasks||[]).filter(t => t.done).length;
+  if (completadas === 0) { showToast('No hay tareas completadas'); return; }
+  if (!confirm(`¿Eliminar ${completadas} tarea${completadas!==1?'s':''} completada${completadas!==1?'s':''}?`)) return;
+  activePDV.tasks = (activePDV.tasks||[]).filter(t => !t.done);
+  renderTasks();
+  await savePDV(activePDV);
+  showToast(`${completadas} tarea${completadas!==1?'s':''} eliminada${completadas!==1?'s':''} ✓`);
+}
+
+// Compatibilidad — funciones de chat que ya no se usan activamente
+function usarTemplate(idx) {}
+async function sendMessage() {}
+async function vaciarChat() {}
+async function sincronizarMensajes() { showToast('Chat reemplazado por Tareas'); }
+
 
 function abrirWhatsApp() {
   if (!activePDV) return;
@@ -2426,35 +2473,7 @@ async function wahaSend(tel, texto) {
   return true;
 }
 
-async function sendMessage() {
-  const input = document.getElementById('chatInput');
-  const text  = input.value.trim();
-  if (!text || !activePDV) return;
-  const now = new Date();
-  const msg = {
-    tipo:'out', texto:text,
-    hora:  now.toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'}),
-    fecha: now.toLocaleDateString('es-VE',{weekday:'short',day:'numeric',month:'short'})
-  };
-  activePDV.chat.push(msg);
-  input.value = ''; renderChat();
-
-  // Intentar enviar por WAHA
-  try {
-    const ok = await wahaStatus();
-    if (ok) {
-      await wahaSend(activePDV.tel, text);
-      showToast('✅ Mensaje enviado por WhatsApp');
-    } else {
-      showToast('⚠️ Guardado · WAHA no conectado', true);
-    }
-  } catch(e) {
-    showToast('⚠️ Guardado · Error al enviar WA', true);
-  }
-
-  await savemensaje(activePDV.id, msg);
-  logActivity('wa', `Mensaje enviado a <strong>${activePDV.nombre}</strong>`);
-}
+// sendMessage reemplazado por sistema de Tasks (ver renderTasks arriba)
 
 async function abrirWhatsApp() {
   if (!activePDV) return;
