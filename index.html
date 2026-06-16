@@ -217,6 +217,168 @@ html, body {
   z-index: 190;
 }
 
+
+/* ═══════════════════════════════════════
+   LOGIN SCREEN
+═══════════════════════════════════════ */
+#loginScreen {
+  position: fixed;
+  inset: 0;
+  background: #0D0804;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', sans-serif;
+}
+#loginScreen.hidden { display: none; }
+
+.login-box {
+  background: #110A04;
+  border: 1px solid #3A2614;
+  border-radius: 16px;
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.6);
+}
+
+.login-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.login-dot {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, #C8873A, #D4A830);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: #1A0E06;
+  flex-shrink: 0;
+}
+
+.login-brand {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: #F0DEC0;
+  line-height: 1.2;
+}
+.login-brand span { color: #C8873A; }
+.login-sub {
+  font-size: 11px;
+  color: #6A5040;
+  font-family: 'IBM Plex Mono', monospace;
+  margin-top: 2px;
+}
+
+.login-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #9C7D5A;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+}
+
+.login-field {
+  margin-bottom: 14px;
+}
+.login-field label {
+  display: block;
+  font-size: 11px;
+  color: #6A5040;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  margin-bottom: 6px;
+}
+.login-field input {
+  width: 100%;
+  background: #1E1409;
+  border: 1px solid #3A2614;
+  border-radius: 8px;
+  padding: 11px 14px;
+  color: #F0DEC0;
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  transition: border-color .2s;
+}
+.login-field input:focus { border-color: #C8873A; }
+.login-field input::placeholder { color: #4A3020; }
+
+.login-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #C8873A, #D4A830);
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  color: #1A0E06;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: opacity .2s;
+  letter-spacing: .5px;
+}
+.login-btn:hover { opacity: .88; }
+.login-btn:active { opacity: .75; }
+
+.login-error {
+  background: rgba(192,64,64,.15);
+  border: 1px solid rgba(192,64,64,.4);
+  border-radius: 7px;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: #E07070;
+  margin-top: 12px;
+  display: none;
+  text-align: center;
+}
+.login-error.show { display: block; }
+
+.login-footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 10px;
+  color: #4A3020;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* LOGOUT btn en sidebar */
+.shell-logout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #6A5040;
+  font-weight: 500;
+  transition: all .15s;
+  border: 1px solid transparent;
+  margin: 4px 8px 0;
+  background: none;
+  width: calc(100% - 16px);
+  font-family: 'Inter', sans-serif;
+}
+.shell-logout:hover {
+  background: #1E1409;
+  color: #C04040;
+  border-color: #3A1414;
+}
+
 @media (max-width: 768px) {
   .shell-nav { 
     position: fixed; 
@@ -234,6 +396,33 @@ html, body {
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-dot">ST</div>
+      <div>
+        <div class="login-brand">Suite <span>Ruta 220</span></div>
+        <div class="login-sub">Isla de Margarita · Venezuela</div>
+      </div>
+    </div>
+    <div class="login-title">Acceso restringido</div>
+    <div class="login-field">
+      <label>Usuario</label>
+      <input type="text" id="loginUser" placeholder="usuario" autocomplete="username"
+        onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+    </div>
+    <div class="login-field">
+      <label>Contraseña</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">🔐 Ingresar</button>
+    <div class="login-error" id="loginError">Usuario o contraseña incorrectos</div>
+    <div class="login-footer">Ron Santa Teresa · Ruta 220 · v2.0</div>
+  </div>
+</div>
 
 <!-- MOBILE TOP BAR -->
 <div class="shell-hamburger" id="shellHamburger">
@@ -295,6 +484,10 @@ html, body {
         <span class="nav-icon">📊</span>
         <span>Resumen Semana</span>
       </div>
+
+    
+      <div class="shell-nav-section" style="margin-top:8px">Sesión</div>
+      <button class="shell-logout" onclick="doLogout()">🚪 Cerrar sesión</button>
 
     </div>
 
@@ -1154,6 +1347,55 @@ html, body {
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modalWahaMensaje')">Cancelar</button>
       <button class="btn btn-wa" onclick="enviarWahaMensaje()">📤 Enviar por WhatsApp</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- MODAL: Editar Pago -->
+<div class="modal-overlay" id="modalEditarPago">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">✏️ Editar Pago</span>
+      <button class="modal-close" onclick="closeModal('modalEditarPago')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editPagoId">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Monto *</label>
+          <input type="number" id="editPagoMonto" placeholder="0.00" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Moneda</label>
+          <select id="editPagoMoneda">
+            <option>USD</option><option>Bs</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Método de pago</label>
+          <select id="editPagoMetodo">
+            <option>Efectivo USD</option>
+            <option>Efectivo Bs</option>
+            <option>Transferencia Bs</option>
+            <option>Zelle</option>
+            <option>Pago Móvil</option>
+            <option>Cheque</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Referencia</label>
+          <input type="text" id="editPagoRef" placeholder="Nro. referencia">
+        </div>
+        <div class="form-group full">
+          <label>Nota</label>
+          <textarea id="editPagoNota" placeholder="Observaciones..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalEditarPago')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEditarPago()">💾 Guardar cambios</button>
     </div>
   </div>
 </div>
@@ -2032,6 +2274,107 @@ async function guardarPago() {
   logActivity('cobro', `Cobro $${monto.toFixed(2)} ← <strong>${activePDV.nombre}</strong>`);
   showToast(`Pago de $${monto.toFixed(2)} registrado ✓`);
   ['pagoMonto','pagoRef','pagoNota'].forEach(id=>document.getElementById(id).value='');
+}
+
+
+// ══════════════════════════════════════════
+//  EDITAR / ELIMINAR PAGOS
+// ══════════════════════════════════════════
+function abrirEditarPago(pagoId) {
+  if (!activePDV) return;
+  const p = (activePDV.pagos||[]).find(x=>x.id===pagoId);
+  if (!p) return;
+  document.getElementById('editPagoId').value    = pagoId;
+  document.getElementById('editPagoMonto').value  = p.monto;
+  document.getElementById('editPagoRef').value    = p.ref||'';
+  document.getElementById('editPagoNota').value   = p.nota||'';
+  const setSelect = (id, val) => {
+    const s = document.getElementById(id);
+    for (let o of s.options) { if (o.value===val||o.text===val) { s.value=o.value; break; } }
+  };
+  setSelect('editPagoMoneda', p.moneda);
+  setSelect('editPagoMetodo', p.metodo);
+  openModal('modalEditarPago');
+}
+
+async function guardarEditarPago() {
+  if (!activePDV) return;
+  const pagoId   = document.getElementById('editPagoId').value;
+  const nuevoMonto = parseFloat(document.getElementById('editPagoMonto').value)||0;
+  if (nuevoMonto <= 0) { showToast('Ingresa un monto válido', true); return; }
+
+  const idx = (activePDV.pagos||[]).findIndex(x=>x.id===pagoId);
+  if (idx === -1) return;
+
+  const pagoViejo = activePDV.pagos[idx];
+  const diff = nuevoMonto - pagoViejo.monto; // diferencia para reajustar factura
+
+  // Actualizar pago en memoria
+  activePDV.pagos[idx] = {
+    ...pagoViejo,
+    monto:  nuevoMonto,
+    moneda: document.getElementById('editPagoMoneda').value,
+    metodo: document.getElementById('editPagoMetodo').value,
+    ref:    document.getElementById('editPagoRef').value,
+    nota:   document.getElementById('editPagoNota').value,
+  };
+
+  // Reajustar factura asociada si existe
+  if (pagoViejo.facturaId && diff !== 0) {
+    const fac = (activePDV.facturas||[]).find(f=>f.id===pagoViejo.facturaId);
+    if (fac) {
+      fac.saldo = Math.max(0, fac.saldo - diff);
+      fac.estado = fac.saldo <= 0 ? 'pagada' : fac.saldo < fac.monto ? 'parcial' : 'pendiente';
+      await updateFacturaRemote(fac);
+    }
+  }
+
+  showLoading('Actualizando pago…');
+  await savePago(activePDV.id, activePDV.pagos[idx]);
+  actualizarStatusPDV();
+  await savePDV(activePDV);
+  hideLoading();
+  closeModal('modalEditarPago');
+  renderCobranza();
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+  renderRightPanel(); renderDashboard();
+  logActivity('cobro', `Pago editado: <strong>${activePDV.nombre}</strong> $${nuevoMonto.toFixed(2)}`);
+  showToast('Pago actualizado ✓');
+}
+
+async function eliminarPago(pagoId) {
+  if (!activePDV) return;
+  const p = (activePDV.pagos||[]).find(x=>x.id===pagoId);
+  if (!p) return;
+  if (!confirm(`¿Eliminar este pago de ${p.moneda} ${p.monto.toFixed(2)}?
+Esta acción no se puede deshacer.`)) return;
+
+  showLoading('Eliminando pago…');
+
+  // Revertir saldo en factura asociada
+  if (p.facturaId) {
+    const fac = (activePDV.facturas||[]).find(f=>f.id===p.facturaId);
+    if (fac) {
+      fac.saldo = Math.min(fac.monto, fac.saldo + p.monto);
+      fac.pagosAplicados = (fac.pagosAplicados||[]).filter(x=>x!==pagoId);
+      fac.estado = fac.saldo <= 0 ? 'pagada' : fac.saldo < fac.monto ? 'parcial' : 'pendiente';
+      await updateFacturaRemote(fac);
+    }
+  }
+
+  // Eliminar de Supabase
+  await sb.from('pagos').delete().eq('id', pagoId);
+
+  // Eliminar de memoria
+  activePDV.pagos = activePDV.pagos.filter(x=>x.id!==pagoId);
+  actualizarStatusPDV();
+  await savePDV(activePDV);
+  hideLoading();
+  renderCobranza();
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+  renderRightPanel(); renderDashboard();
+  logActivity('cobro', `Pago eliminado ← <strong>${activePDV.nombre}</strong>`);
+  showToast('Pago eliminado ✓');
 }
 
 function actualizarStatusPDV() {
@@ -4241,6 +4584,70 @@ function closeShellNav() {
   document.getElementById('shellNav').classList.remove('open');
   document.getElementById('shellOverlay').classList.remove('open');
 }
+
+
+// ══════════════════════════════════════════
+// AUTH — LOGIN / LOGOUT
+// ══════════════════════════════════════════
+const AUTH_USER = 'marquez220';
+const AUTH_PASS = 'Perseo26.';
+const AUTH_KEY  = 'suite_r220_auth';
+
+function checkAuth() {
+  const ok = sessionStorage.getItem(AUTH_KEY) === 'ok';
+  if (ok) {
+    document.getElementById('loginScreen').classList.add('hidden');
+  } else {
+    document.getElementById('loginScreen').classList.remove('hidden');
+    setTimeout(() => document.getElementById('loginUser').focus(), 100);
+  }
+}
+
+function doLogin() {
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  const err  = document.getElementById('loginError');
+
+  if (user === AUTH_USER && pass === AUTH_PASS) {
+    sessionStorage.setItem(AUTH_KEY, 'ok');
+    err.classList.remove('show');
+    document.getElementById('loginScreen').classList.add('hidden');
+  } else {
+    err.classList.add('show');
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginPass').focus();
+    // Shake animation
+    const box = document.querySelector('.login-box');
+    box.style.animation = 'none';
+    box.offsetHeight;
+    box.style.animation = 'loginShake .4s ease';
+  }
+}
+
+function doLogout() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  sessionStorage.removeItem(AUTH_KEY);
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginScreen').classList.remove('hidden');
+  closeShellNav();
+}
+
+// Keyframe para shake
+const shakeStyle = document.createElement('style');
+shakeStyle.textContent = `
+  @keyframes loginShake {
+    0%,100%{transform:translateX(0)}
+    20%{transform:translateX(-8px)}
+    40%{transform:translateX(8px)}
+    60%{transform:translateX(-5px)}
+    80%{transform:translateX(5px)}
+  }
+`;
+document.head.appendChild(shakeStyle);
+
+// Ejecutar al cargar
+checkAuth();
 
 // Date display
 (function() {
