@@ -857,6 +857,7 @@ html, body {
       <span id="wahaDotLabel">WA</span>
     </div>
     <div class="topbar-date" id="topDate"></div>
+    <button class="btn btn-ghost" id="btnSync" onclick="sincronizarTodo()" title="Recargar todos los datos desde Supabase" style="font-size:11px;padding:5px 10px">🔄 Sync</button>
     <button class="btn btn-qr" onclick="openModal('modalQR')" title="Conectar WhatsApp">📱 WA</button>
     <button class="btn btn-primary" onclick="openModal('modalNuevoPDV')">+ PDV</button>
   </div>
@@ -1485,6 +1486,7 @@ async function cargarPDVs() {
     pdvs = dataPDVs.map(p => ({
       ...p,
       credito: parseFloat(p.credito) || 0,
+      tasks:    p.tasks || [],
       pedidos:  (pedidos  || []).filter(x => x.pdv_id === p.id).map(x => ({...x, items: x.items || [], total: parseFloat(x.total)||0})),
       facturas: (facturas || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, saldo: parseFloat(x.saldo)||0, pagosAplicados: x.pagos_aplicados||[]})),
       pagos:    (pagos    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id})),
@@ -1503,6 +1505,33 @@ async function cargarPDVs() {
 }
 
 // ══════════════════════════════════════════
+//  SINCRONIZAR — recarga sin refrescar página
+// ══════════════════════════════════════════
+async function sincronizarTodo() {
+  const btn = document.getElementById('btnSync');
+  if (btn) { btn.textContent = '⏳ Sync'; btn.disabled = true; }
+
+  const pdvActivoId = activePDV?.id || null;
+
+  await cargarPDVs();
+
+  // Restaurar PDV activo si había uno seleccionado
+  if (pdvActivoId) {
+    const pdvRestaurado = pdvs.find(p => p.id === pdvActivoId);
+    if (pdvRestaurado) {
+      activePDV = pdvRestaurado;
+      renderRightPanel();
+    }
+  }
+
+  renderPDVList(document.getElementById('searchPDV')?.value || '', currentFilter);
+  renderDashboard();
+
+  if (btn) { btn.textContent = '🔄 Sync'; btn.disabled = false; }
+  showToast('✓ Datos actualizados');
+}
+
+// ══════════════════════════════════════════
 //  SUPABASE: GUARDAR PDV
 // ══════════════════════════════════════════
 async function savePDV(p) {
@@ -1510,7 +1539,8 @@ async function savePDV(p) {
     id: p.id, nombre: p.nombre, tipo: p.tipo, tel: p.tel,
     rif: p.rif||'', dir: p.dir||'', portafolio: p.portafolio,
     credito: p.credito||0, frecuencia: p.frecuencia,
-    notas: p.notas||'', status: p.status
+    notas: p.notas||'', status: p.status,
+    tasks: p.tasks||[]
   };
   const { error } = await sb.from('pdvs').upsert(row, { onConflict: 'id' });
   if (error) { console.error(error); showToast('Error guardando PDV', true); return false; }
