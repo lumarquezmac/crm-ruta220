@@ -902,6 +902,33 @@ html, body {
         <div style="font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;margin-bottom:4px">Buen día, Luis 🥃</div>
         <div style="font-size:13px;color:var(--text-dim)">Resumen general · Ruta 220</div>
       </div>
+
+      <!-- ASISTENTE IA -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:18px">✨</span>
+          <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px">Pregúntale a la IA sobre tu ruta</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Ej: "¿qué PDVs llevan más de 15 días sin pagar?" · "¿cuál es mi PDV con más deuda?" · "resume mi cobranza pendiente"</div>
+
+        <div id="iaKeyBlock" style="margin-bottom:10px">
+          <input type="password" id="iaApiKey" placeholder="Pega tu API key de Gemini aquí (no se guarda)"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;color:var(--text);font-size:12px;outline:none;font-family:inherit"
+            onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'">
+          <div style="font-size:10px;color:var(--text-muted);margin-top:5px">🔒 Tu clave vive solo en esta pestaña, nunca se guarda ni se envía a ningún lado excepto a Google.</div>
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <input type="text" id="iaPregunta" placeholder="Escribe tu pregunta sobre la ruta…"
+            style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;color:var(--text);font-size:13px;outline:none;font-family:inherit"
+            onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'"
+            onkeydown="if(event.key==='Enter')preguntarIA()">
+          <button class="btn btn-primary" id="btnPreguntarIA" onclick="preguntarIA()">✨ Preguntar</button>
+        </div>
+
+        <div id="iaRespuesta" style="display:none;margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:13px 15px;font-size:13px;color:var(--text);line-height:1.6;white-space:pre-wrap"></div>
+      </div>
+
       <div class="dash-grid" id="dashKPIs"></div>
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">PDVs con deuda pendiente</div>
       <div id="dashDeudas"></div>
@@ -1850,6 +1877,81 @@ function toggleThemeCRM() {
 (function initThemeCRM() {
   applyThemeCRM(localStorage.getItem('crm_theme') || 'dark');
 })();
+
+// ══════════════════════════════════════════
+//  ASISTENTE IA — Gemini
+// ══════════════════════════════════════════
+function construirContextoIA() {
+  const hoy = new Date();
+  const resumen = pdvs.map(p => {
+    const deuda = calcDeuda(p);
+    const facturasPend = (p.facturas||[]).filter(f => f.estado !== 'pagada');
+    const diasMasAntigua = facturasPend.length
+      ? Math.max(...facturasPend.map(f => Math.floor((hoy - new Date(f.fecha)) / 86400000)))
+      : 0;
+    return {
+      nombre: p.nombre,
+      tipo: p.tipo,
+      status: p.status,
+      deuda_usd: Math.round(deuda*100)/100,
+      facturas_pendientes: facturasPend.length,
+      dias_factura_mas_antigua: diasMasAntigua,
+      total_pedidos: (p.pedidos||[]).length,
+      ventas_total_usd: Math.round((p.pedidos||[]).reduce((s,x)=>s+x.total,0)*100)/100,
+    };
+  });
+  return JSON.stringify(resumen);
+}
+
+async function preguntarIA() {
+  const apiKey   = document.getElementById('iaApiKey').value.trim();
+  const pregunta = document.getElementById('iaPregunta').value.trim();
+  const out       = document.getElementById('iaRespuesta');
+  const btn       = document.getElementById('btnPreguntarIA');
+
+  if (!apiKey)   { showToast('Pega tu API key de Gemini primero', true); return; }
+  if (!pregunta) { showToast('Escribe una pregunta', true); return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Pensando…';
+  out.style.display = 'block';
+  out.textContent = 'Consultando…';
+
+  const contexto = construirContextoIA();
+  const fechaHoy = new Date().toLocaleDateString('es-VE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+  const systemPrompt = `Eres un asistente de análisis de ventas para un Ejecutivo de Ventas de Ron Santa Teresa en Isla de Margarita, Venezuela. Hoy es ${fechaHoy}. A continuación tienes datos JSON reales de sus puntos de venta (PDVs): nombre, tipo de negocio, estado (verde=al día, amarillo=pendiente, rojo=vencido), deuda en USD, cantidad de facturas pendientes, días desde la factura más antigua sin pagar, total de pedidos históricos y ventas totales en USD.
+
+DATOS:
+${contexto}
+
+Responde la pregunta del usuario de forma breve, concreta y en español venezolano natural, citando nombres de PDVs y cifras exactas cuando aplique. Si la pregunta no se puede responder con estos datos, dilo claramente. No inventes información que no esté en los datos.`;
+
+  try {
+    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: pregunta }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] }
+      })
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(()=>({}));
+      throw new Error(errData?.error?.message || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No obtuve respuesta. Intenta de nuevo.';
+    out.textContent = texto;
+  } catch (err) {
+    out.textContent = '⚠️ Error: ' + err.message;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '✨ Preguntar';
+}
 
 async function init() {
   document.getElementById('topDate').textContent = new Date().toLocaleDateString('es-VE',{weekday:'short',day:'numeric',month:'short'});
