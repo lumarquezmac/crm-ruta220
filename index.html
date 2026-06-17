@@ -518,6 +518,15 @@ html, body {
     --nav-h:56px; --bottom-h:60px;
   }
 
+  #moduleCRM.light-mode {
+    --amber:#B5762E; --amber-lt:#9A5F1F; --caoba:#FAF6EF;
+    --panel:#FFFFFF; --surface:#F5EFE2; --card:#FFFFFF;
+    --border:#E0D2B8; --border-lt:#CBB890;
+    --text:#2A1E10; --text-dim:#6B5638; --text-muted:#9C8862;
+    --green:#2B8A57; --red:#B33333; --blue:#2E5FA3;
+    --whatsapp:#1DA851; --gold:#A87E1E;
+  }
+
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family:'Inter',sans-serif; background:var(--caoba); color:var(--text); min-height:100vh; overflow-x:hidden; }
 
@@ -857,6 +866,7 @@ html, body {
       <span id="wahaDotLabel">WA</span>
     </div>
     <div class="topbar-date" id="topDate"></div>
+    <button class="btn btn-ghost" id="btnThemeCRM" onclick="toggleThemeCRM()" title="Cambiar tema" style="font-size:13px;padding:5px 9px">🌙</button>
     <button class="btn btn-ghost" id="btnSync" onclick="sincronizarTodo()" title="Recargar todos los datos desde Supabase" style="font-size:11px;padding:5px 10px">🔄 Sync</button>
     <button class="btn btn-qr" onclick="openModal('modalQR')" title="Conectar WhatsApp">📱 WA</button>
     <button class="btn btn-primary" onclick="openModal('modalNuevoPDV')">+ PDV</button>
@@ -957,7 +967,7 @@ html, body {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <div style="font-size:13px;font-weight:500">Estado de cuenta</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-ghost" onclick="generarPDFEstadoCuenta()" title="Descargar estado de cuenta PDF">🖨️ PDF</button>
+            <button class="btn btn-ghost" onclick="abrirModalPDFColumnas()" title="Descargar estado de cuenta PDF">🖨️ PDF</button>
             <button class="btn btn-ghost" onclick="abrirModalPago()">💰 Registrar pago</button>
             <button class="btn btn-primary" onclick="openModal('modalFactura')">📄 Nueva factura</button>
           </div>
@@ -1533,6 +1543,42 @@ html, body {
   </div>
 </div>
 
+<!-- MODAL: Selección de columnas PDF -->
+<div class="modal-overlay" id="modalPDFColumnas">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">🖨️ Columnas del PDF</span>
+      <button class="modal-close" onclick="closeModal('modalPDFColumnas')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px">Elige qué columnas incluir en la tabla de facturas pendientes del estado de cuenta.</div>
+      <div style="display:flex;flex-direction:column;gap:9px" id="pdfColsList">
+        <label class="cki-pdf"><input type="checkbox" value="nro" checked> N° de Factura</label>
+        <label class="cki-pdf"><input type="checkbox" value="emision" checked> Fecha de emisión</label>
+        <label class="cki-pdf"><input type="checkbox" value="vence" checked> Fecha de vencimiento</label>
+        <label class="cki-pdf"><input type="checkbox" value="condicion" checked> Condición</label>
+        <label class="cki-pdf"><input type="checkbox" value="descripcion" checked> Descripción</label>
+        <label class="cki-pdf"><input type="checkbox" value="monto" checked> Monto</label>
+        <label class="cki-pdf"><input type="checkbox" value="abonado" checked> Abonado</label>
+        <label class="cki-pdf"><input type="checkbox" value="saldo" checked> Saldo</label>
+        <label class="cki-pdf"><input type="checkbox" value="estado" checked> Estado</label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="pdfColsSetAll(true)">Marcar todas</button>
+        <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="pdfColsSetAll(false)">Desmarcar todas</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalPDFColumnas')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarGenerarPDF()">📄 Generar PDF</button>
+    </div>
+  </div>
+</div>
+<style>
+  .cki-pdf { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text); cursor:pointer; padding:8px 10px; background:var(--surface); border:1px solid var(--border); border-radius:7px; }
+  .cki-pdf input { accent-color:var(--amber); width:16px; height:16px; cursor:pointer; flex-shrink:0; }
+</style>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -1785,6 +1831,26 @@ function logActivity(tipo, texto) {
 // ══════════════════════════════════════════
 //  RENDER
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+//  TEMA CLARO/OSCURO — CRM
+// ══════════════════════════════════════════
+function applyThemeCRM(mode) {
+  const mod = document.getElementById('moduleCRM');
+  const btn = document.getElementById('btnThemeCRM');
+  if (!mod) return;
+  mod.classList.toggle('light-mode', mode === 'light');
+  if (btn) btn.textContent = mode === 'light' ? '☀️' : '🌙';
+}
+function toggleThemeCRM() {
+  const isLight = document.getElementById('moduleCRM').classList.contains('light-mode');
+  const next = isLight ? 'dark' : 'light';
+  localStorage.setItem('crm_theme', next);
+  applyThemeCRM(next);
+}
+(function initThemeCRM() {
+  applyThemeCRM(localStorage.getItem('crm_theme') || 'dark');
+})();
+
 async function init() {
   document.getElementById('topDate').textContent = new Date().toLocaleDateString('es-VE',{weekday:'short',day:'numeric',month:'short'});
   await cargarPDVs();
@@ -3178,8 +3244,28 @@ function addProductRow() {
 // ══════════════════════════════════════════
 //  GENERADOR PDF ESTADO DE CUENTA
 // ══════════════════════════════════════════
-function generarPDFEstadoCuenta() {
+// ══════════════════════════════════════════
+//  PDF — SELECCIÓN DE COLUMNAS
+// ══════════════════════════════════════════
+function abrirModalPDFColumnas() {
   if (!activePDV) return;
+  openModal('modalPDFColumnas');
+}
+
+function pdfColsSetAll(val) {
+  document.querySelectorAll('#pdfColsList input[type=checkbox]').forEach(cb => cb.checked = val);
+}
+
+function confirmarGenerarPDF() {
+  const seleccionadas = Array.from(document.querySelectorAll('#pdfColsList input[type=checkbox]:checked')).map(cb => cb.value);
+  if (!seleccionadas.length) { showToast('Selecciona al menos una columna', true); return; }
+  closeModal('modalPDFColumnas');
+  generarPDFEstadoCuenta(seleccionadas);
+}
+
+function generarPDFEstadoCuenta(colsSeleccionadas) {
+  if (!activePDV) return;
+  if (!colsSeleccionadas) colsSeleccionadas = ['nro','emision','vence','condicion','descripcion','monto','abonado','saldo','estado'];
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const W = 210; // ancho A4
@@ -3316,22 +3402,39 @@ function generarPDFEstadoCuenta() {
   y += 4;
 
   const estadoLabel = { pendiente:'Pendiente', vencida:'VENCIDA', parcial:'Parcial' };
-  const filas = facturas.map(f => [
-    f.nro,
-    f.fecha,
-    f.vence || '—',
-    f.condicion,
-    f.descripcion ? (f.descripcion.length>40 ? f.descripcion.slice(0,38)+'…' : f.descripcion) : '—',
-    `${f.moneda} ${f.monto.toFixed(2)}`,
-    `$${(f.monto-f.saldo).toFixed(2)}`,
-    `$${f.saldo.toFixed(2)}`,
-    estadoLabel[f.estado] || f.estado,
-  ]);
+
+  const COL_DEFS = {
+    nro:         { label:'N° Factura',  get:f => f.nro,                          align:'left',   bold:true,  color:AMBER_L },
+    emision:     { label:'Emisión',     get:f => f.fecha,                         align:'left' },
+    vence:       { label:'Vence',       get:f => f.vence || '—',                  align:'left' },
+    condicion:   { label:'Condición',   get:f => f.condicion,                     align:'left' },
+    descripcion: { label:'Descripción', get:f => f.descripcion ? (f.descripcion.length>40 ? f.descripcion.slice(0,38)+'…' : f.descripcion) : '—', align:'left' },
+    monto:       { label:'Monto',       get:f => `${f.moneda} ${f.monto.toFixed(2)}`,      align:'right' },
+    abonado:     { label:'Abonado',     get:f => `$${(f.monto-f.saldo).toFixed(2)}`,        align:'right', color:VERDE },
+    saldo:       { label:'Saldo',       get:f => `$${f.saldo.toFixed(2)}`,                  align:'right', bold:true, dynamicColor:'saldo' },
+    estado:      { label:'Estado',      get:f => estadoLabel[f.estado] || f.estado,         align:'center', bold:true, dynamicColor:'estado' },
+  };
+
+  const colsActivas = colsSeleccionadas.filter(c => COL_DEFS[c]);
+  const headRow = colsActivas.map(c => COL_DEFS[c].label);
+  const filas = facturas.map(f => colsActivas.map(c => COL_DEFS[c].get(f)));
+
+  const columnStyles = {};
+  let idxSaldo = -1, idxEstado = -1;
+  colsActivas.forEach((c, i) => {
+    const def = COL_DEFS[c];
+    const style = { halign: def.align };
+    if (def.bold) style.fontStyle = 'bold';
+    if (def.color) style.textColor = def.color;
+    columnStyles[i] = style;
+    if (c === 'saldo')  idxSaldo  = i;
+    if (c === 'estado') idxEstado = i;
+  });
 
   doc.autoTable({
     startY: y,
-    head: [['N° Factura','Emisión','Vence','Condición','Descripción','Monto','Abonado','Saldo','Estado']],
-    body: filas.length ? filas : [['Sin facturas pendientes','','','','','','','','']],
+    head: [headRow],
+    body: filas.length ? filas : [colsActivas.map(()=> '')].map(r => { r[0]='Sin facturas pendientes'; return r; }),
     margin: { left: margen, right: margen },
     styles: {
       fontSize: 7.5,
@@ -3350,25 +3453,16 @@ function generarPDFEstadoCuenta() {
       halign: 'center',
     },
     alternateRowStyles: { fillColor: [30, 20, 8] },
-    columnStyles: {
-      0: { fontStyle:'bold', textColor: AMBER_L },
-      5: { halign:'right' },
-      6: { halign:'right', textColor: [...VERDE] },
-      7: { halign:'right', fontStyle:'bold' },
-      8: {
-        halign:'center', fontStyle:'bold',
-        textColor: WHITE,
-      },
-    },
+    columnStyles: columnStyles,
     didParseCell: function(data) {
-      if (data.section==='body' && data.column.index===8) {
+      if (data.section==='body' && idxEstado>=0 && data.column.index===idxEstado) {
         const v = data.cell.raw;
         if (v==='VENCIDA') data.cell.styles.textColor = ROJO;
         else if (v==='Parcial') data.cell.styles.textColor = AMBER_L;
         else data.cell.styles.textColor = [180,180,180];
       }
-      if (data.section==='body' && data.column.index===7) {
-        const val = parseFloat(data.cell.raw.replace('$',''))||0;
+      if (data.section==='body' && idxSaldo>=0 && data.column.index===idxSaldo) {
+        const val = parseFloat(String(data.cell.raw).replace('$',''))||0;
         data.cell.styles.textColor = val>0 ? ROJO : VERDE;
       }
     },
@@ -3591,6 +3685,11 @@ init();
     --accent:#f5a623;--a2:#3ecf8e;--a3:#e05252;--a4:#5b8af5;
     --text:#e8e8ec;--muted:#7a7a8a;
     --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+  }
+  #modulePRO.light-mode{
+    --bg:#FAFAF8;--surface:#FFFFFF;--surface2:#F0EFEA;--border:#DDDAD2;
+    --accent:#C4791A;--a2:#1F8F5F;--a3:#C23B3B;--a4:#3B5FB5;
+    --text:#1C1C1E;--muted:#6B6B70;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;padding-bottom:70px;}
@@ -3886,6 +3985,7 @@ init();
     <p id="wkLbl">Cargando…</p>
   </div>
   <div class="hr">
+    <button class="bh" id="btnThemePRO" onclick="toggleThemePRO()" style="font-size:1rem;padding:7px 10px">🌙</button>
     <button class="bh" onclick="showWeekSummary()">📊 SEMANA</button>
     <button class="bh prim" onclick="genCierreActive()">⬆ CIERRE</button>
   </div>
@@ -3982,6 +4082,26 @@ function blankPdv(name,addr=''){
 // ══════════════════════════════════════════
 // SKELETON
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+//  TEMA CLARO/OSCURO — RUTA 220 PRO
+// ══════════════════════════════════════════
+function applyThemePRO(mode) {
+  const mod = document.getElementById('modulePRO');
+  const btn = document.getElementById('btnThemePRO');
+  if (!mod) return;
+  mod.classList.toggle('light-mode', mode === 'light');
+  if (btn) btn.textContent = mode === 'light' ? '☀️' : '🌙';
+}
+function toggleThemePRO() {
+  const isLight = document.getElementById('modulePRO').classList.contains('light-mode');
+  const next = isLight ? 'dark' : 'light';
+  localStorage.setItem('pro_theme', next);
+  applyThemePRO(next);
+}
+(function initThemePRO() {
+  applyThemePRO(localStorage.getItem('pro_theme') || 'dark');
+})();
+
 function buildSkeleton(){
   const tw=document.getElementById('tabsW'),pc=document.getElementById('panelsCont');
   DAYS.forEach(d=>{
