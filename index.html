@@ -1540,11 +1540,14 @@ async function savePDV(p) {
     rif: p.rif||'', dir: p.dir||'', portafolio: p.portafolio,
     credito: p.credito||0, frecuencia: p.frecuencia,
     notas: p.notas||'', status: p.status,
-    tasks: p.tasks||[]
+    tasks: JSON.parse(JSON.stringify(p.tasks||[]))
   };
-  const { error } = await sb.from('pdvs').upsert(row, { onConflict: 'id' });
-  if (error) { console.error(error); showToast('Error guardando PDV', true); return false; }
-  // backup local
+  const { data, error } = await sb.from('pdvs').upsert(row, { onConflict: 'id' }).select();
+  if (error) {
+    console.error('savePDV error:', JSON.stringify(error));
+    showToast('Error al guardar: ' + (error.message || error.code || 'revisar consola'), true);
+    return false;
+  }
   localStorage.setItem('crm_pdvs', JSON.stringify(pdvs));
   return true;
 }
@@ -1904,7 +1907,8 @@ async function agregarTarea() {
   activePDV.tasks.push(tarea);
   input.value = '';
   renderTasks();
-  await savePDV(activePDV);
+  const ok = await savePDV(activePDV);
+  if (ok) showToast('Tarea guardada ✓');
   logActivity('task', `Tarea agregada en <strong>${activePDV.nombre}</strong>: ${texto}`);
 }
 
@@ -3945,12 +3949,23 @@ function showWeekSummary(){
 // MODAL
 // ══════════════════════════════════════════
 function proOpenModal(title,text){document.getElementById('mTitle-pro').textContent=title;document.getElementById('rTxt-pro').textContent=text;document.getElementById('modal-pro').classList.add('on');}
-function proCloseModal(){document.getElementById('modal').classList.remove('on');}
+function proCloseModal(){document.getElementById('modal-pro').classList.remove('on');}
 function copyRpt(){
-  const t=document.getElementById('rTxt').textContent;
-  navigator.clipboard.writeText(t).then(()=>proToast('Copiado ✓')).catch(()=>{const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);proToast('Copiado ✓');});
+  const t=document.getElementById('rTxt-pro').textContent;
+  if(!t){proToast('Sin contenido');return;}
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(t).then(()=>proToast('Copiado ✓')).catch(()=>copyFallback(t));
+  } else { copyFallback(t); }
 }
-function waRpt(){window.open('https://wa.me/?text='+encodeURIComponent(document.getElementById('rTxt').textContent),'_blank');}
+function copyFallback(t){
+  const ta=document.createElement('textarea');
+  ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try{document.execCommand('copy');proToast('Copiado ✓');}
+  catch(e){proToast('Error al copiar',true);}
+  document.body.removeChild(ta);
+}
+function waRpt(){const t=document.getElementById('rTxt-pro').textContent;if(!t){proToast('Sin contenido');return;}window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank');}
 
 // ══════════════════════════════════════════
 // UTILS
