@@ -1406,6 +1406,69 @@ html, body {
   </div>
 </div>
 
+<!-- MODAL: Detalle de Factura -->
+<div class="modal-overlay" id="modalDetalleFactura">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">🔍 Detalle de Factura</span>
+      <button class="modal-close" onclick="closeModal('modalDetalleFactura')">×</button>
+    </div>
+    <div class="modal-body" id="detalleFacturaBody">
+      <!-- contenido inyectado por JS -->
+    </div>
+    <div class="modal-footer" id="detalleFacturaFooter">
+      <!-- botones inyectados por JS -->
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Editar Factura -->
+<div class="modal-overlay" id="modalEditarFactura">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">✏️ Editar Factura</span>
+      <button class="modal-close" onclick="closeModal('modalEditarFactura')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editFacId">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Número *</label>
+          <input type="text" id="editFacNro" placeholder="F-0001">
+        </div>
+        <div class="form-group">
+          <label>Monto *</label>
+          <input type="number" id="editFacMonto" placeholder="0.00" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Moneda</label>
+          <select id="editFacMoneda"><option>USD</option><option>Bs</option></select>
+        </div>
+        <div class="form-group">
+          <label>Condición</label>
+          <select id="editFacCondicion"><option>Contado</option><option>Crédito 8 días</option><option>Crédito 15 días</option><option>Crédito 30 días</option></select>
+        </div>
+        <div class="form-group">
+          <label>Fecha emisión</label>
+          <input type="date" id="editFacFecha">
+        </div>
+        <div class="form-group">
+          <label>Vence</label>
+          <input type="date" id="editFacVence">
+        </div>
+        <div class="form-group full">
+          <label>Descripción</label>
+          <textarea id="editFacDesc" placeholder="Detalle de la factura..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalEditarFactura')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEditarFactura()">💾 Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -2029,6 +2092,7 @@ function renderCobranza() {
             </div>
             <div style="display:flex;gap:6px;align-items:center">
               <span class="tag ${eTag[f.estado]||'tag-amber'}">${eLabel[f.estado]||f.estado}</span>
+              <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="abrirDetalleFactura('${f.id}')">🔍 Detalle</button>
               ${f.estado!=='pagada'?`<button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="abrirModalPagoConFactura('${f.id}')">Pagar</button>`:''}
             </div>
           </div>
@@ -2481,6 +2545,152 @@ Esta acción no se puede deshacer.`)) return;
   renderRightPanel(); renderDashboard();
   logActivity('cobro', `Pago eliminado ← <strong>${activePDV.nombre}</strong>`);
   showToast('Pago eliminado ✓');
+}
+
+
+// ══════════════════════════════════════════
+//  DETALLE / EDITAR / ELIMINAR FACTURA
+// ══════════════════════════════════════════
+function abrirDetalleFactura(facId) {
+  if (!activePDV) return;
+  const f = (activePDV.facturas||[]).find(x=>x.id===facId);
+  if (!f) return;
+
+  const eTag   = {pendiente:'tag-amber', vencida:'tag-red', pagada:'tag-green', parcial:'tag-blue'};
+  const eLabel = {pendiente:'Pendiente', vencida:'Vencida', pagada:'Pagada', parcial:'Parcial'};
+
+  // Pagos aplicados a esta factura
+  const pagosFactura = (activePDV.pagos||[]).filter(p => p.facturaId === facId);
+  const abonado = f.monto - f.saldo;
+
+  document.getElementById('detalleFacturaBody').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+      <div>
+        <div style="font-size:17px;font-weight:700;color:var(--text)">${f.nro}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Emitida ${f.fecha} · Vence ${f.vence||'—'}</div>
+      </div>
+      <span class="tag ${eTag[f.estado]||'tag-amber'}">${eLabel[f.estado]||f.estado}</span>
+    </div>
+
+    ${f.descripcion ? `<div style="font-size:13px;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px">${f.descripcion}</div>` : ''}
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+      <div class="pdv-stat"><div class="pdv-stat-label">Monto</div><div class="pdv-stat-val amber">${f.moneda} ${f.monto.toFixed(2)}</div></div>
+      <div class="pdv-stat"><div class="pdv-stat-label">Abonado</div><div class="pdv-stat-val green">$${abonado.toFixed(2)}</div></div>
+      <div class="pdv-stat"><div class="pdv-stat-label">Saldo</div><div class="pdv-stat-val ${f.saldo>0?'red':'green'}">$${f.saldo.toFixed(2)}</div></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Condición</div>
+    <div style="font-size:13px;color:var(--text);margin-bottom:16px">${f.condicion}</div>
+
+    <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">💰 Pagos aplicados (${pagosFactura.length})</div>
+    ${pagosFactura.length === 0
+      ? `<div style="font-size:12px;color:var(--text-muted);padding:10px 0">Sin pagos aplicados a esta factura aún.</div>`
+      : pagosFactura.map(p => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:7px;margin-bottom:6px">
+          <div>
+            <div style="font-size:12px;color:var(--text)">${p.id} · ${p.fecha}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${p.metodo}${p.ref?' · Ref: '+p.ref:''}</div>
+          </div>
+          <div style="font-size:13px;font-weight:600;color:var(--green)">${p.moneda} ${p.monto.toFixed(2)}</div>
+        </div>
+      `).join('')
+    }
+  `;
+
+  document.getElementById('detalleFacturaFooter').innerHTML = `
+    <button class="btn btn-ghost" style="color:var(--red);border-color:var(--red)" onclick="eliminarFactura('${f.id}')">🗑 Eliminar</button>
+    <button class="btn btn-ghost" onclick="abrirEditarFactura('${f.id}')">✏️ Editar</button>
+    ${f.estado!=='pagada' ? `<button class="btn btn-primary" onclick="closeModal('modalDetalleFactura');abrirModalPagoConFactura('${f.id}')">💰 Registrar pago</button>` : ''}
+  `;
+
+  openModal('modalDetalleFactura');
+}
+
+function abrirEditarFactura(facId) {
+  if (!activePDV) return;
+  const f = (activePDV.facturas||[]).find(x=>x.id===facId);
+  if (!f) return;
+  closeModal('modalDetalleFactura');
+
+  document.getElementById('editFacId').value     = f.id;
+  document.getElementById('editFacNro').value     = f.nro;
+  document.getElementById('editFacMonto').value   = f.monto;
+  document.getElementById('editFacFecha').value   = f.fecha;
+  document.getElementById('editFacVence').value   = f.vence||'';
+  document.getElementById('editFacDesc').value    = f.descripcion||'';
+  const setSelect = (id, val) => {
+    const s = document.getElementById(id);
+    for (let o of s.options) { if (o.value===val||o.text===val) { s.value=o.value; break; } }
+  };
+  setSelect('editFacMoneda', f.moneda);
+  setSelect('editFacCondicion', f.condicion);
+
+  openModal('modalEditarFactura');
+}
+
+async function guardarEditarFactura() {
+  if (!activePDV) return;
+  const facId = document.getElementById('editFacId').value;
+  const idx = (activePDV.facturas||[]).findIndex(x=>x.id===facId);
+  if (idx === -1) return;
+
+  const fac = activePDV.facturas[idx];
+  const nuevoMonto = parseFloat(document.getElementById('editFacMonto').value)||0;
+  if (nuevoMonto <= 0) { showToast('Ingresa un monto válido', true); return; }
+
+  const abonadoPrevio = fac.monto - fac.saldo;
+  const nuevoSaldo = Math.max(0, nuevoMonto - abonadoPrevio);
+
+  fac.nro         = document.getElementById('editFacNro').value.trim() || fac.nro;
+  fac.monto       = nuevoMonto;
+  fac.saldo       = nuevoSaldo;
+  fac.moneda      = document.getElementById('editFacMoneda').value;
+  fac.condicion   = document.getElementById('editFacCondicion').value;
+  fac.fecha       = document.getElementById('editFacFecha').value || fac.fecha;
+  fac.vence       = document.getElementById('editFacVence').value || null;
+  fac.descripcion = document.getElementById('editFacDesc').value.trim();
+  fac.estado = fac.saldo <= 0 ? 'pagada' : fac.saldo < fac.monto ? 'parcial'
+             : (fac.vence && fac.vence < new Date().toISOString().split('T')[0]) ? 'vencida' : 'pendiente';
+
+  showLoading('Actualizando factura…');
+  await updateFacturaRemote(fac);
+  actualizarStatusPDV();
+  await savePDV(activePDV);
+  hideLoading();
+  closeModal('modalEditarFactura');
+  renderCobranza();
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+  renderRightPanel(); renderDashboard();
+  logActivity('cobro', `Factura editada: <strong>${activePDV.nombre}</strong> ${fac.nro}`);
+  showToast('Factura actualizada ✓');
+}
+
+async function eliminarFactura(facId) {
+  if (!activePDV) return;
+  const f = (activePDV.facturas||[]).find(x=>x.id===facId);
+  if (!f) return;
+  const pagosAsociados = (activePDV.pagos||[]).filter(p=>p.facturaId===facId).length;
+  let msg = `¿Eliminar la factura ${f.nro}?`;
+  if (pagosAsociados > 0) msg += `\n\nTiene ${pagosAsociados} pago(s) asociado(s) que quedarán sin factura vinculada.`;
+  if (!confirm(msg)) return;
+
+  showLoading('Eliminando factura…');
+
+  // Desvincular pagos asociados (no se eliminan, solo se desasocian)
+  (activePDV.pagos||[]).forEach(p => { if (p.facturaId === facId) p.facturaId = null; });
+
+  await sb.from('facturas').delete().eq('id', facId);
+  activePDV.facturas = (activePDV.facturas||[]).filter(x=>x.id!==facId);
+  actualizarStatusPDV();
+  await savePDV(activePDV);
+  hideLoading();
+  closeModal('modalDetalleFactura');
+  renderCobranza();
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+  renderRightPanel(); renderDashboard();
+  logActivity('cobro', `Factura eliminada ← <strong>${activePDV.nombre}</strong> ${f.nro}`);
+  showToast('Factura eliminada ✓');
 }
 
 function actualizarStatusPDV() {
