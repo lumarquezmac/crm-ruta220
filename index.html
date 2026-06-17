@@ -1068,7 +1068,7 @@ html, body {
         <div class="form-title">Productos</div>
         <div id="pedidoItems">
           <div class="product-row">
-            <select class="prod-select">
+            <select class="prod-select" onchange="autoPrecio(this)">
               <optgroup label="─ RON SANTA TERESA ─">
                 <option>Bicentenario</option>
                 <option>ST 1796 N/I</option>
@@ -1476,6 +1476,63 @@ html, body {
   </div>
 </div>
 
+<!-- MODAL: Detalle de Pedido -->
+<div class="modal-overlay" id="modalDetallePedido">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">🔍 Detalle de Pedido</span>
+      <button class="modal-close" onclick="closeModal('modalDetallePedido')">×</button>
+    </div>
+    <div class="modal-body" id="detallePedidoBody">
+      <!-- contenido inyectado por JS -->
+    </div>
+    <div class="modal-footer" id="detallePedidoFooter">
+      <!-- botones inyectados por JS -->
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Editar Pedido -->
+<div class="modal-overlay" id="modalEditarPedido">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">✏️ Editar Pedido</span>
+      <button class="modal-close" onclick="closeModal('modalEditarPedido')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editPedId">
+      <div class="form-section">
+        <div class="form-title">Productos</div>
+        <div id="editPedidoItems"></div>
+        <button class="add-product-btn" onclick="addEditProductRow()">+ Agregar producto</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>Condición de pago</label>
+          <select id="editPedCondicion"><option>Contado</option><option>Crédito 7 días</option><option>Crédito 15 días</option><option>Crédito 30 días</option></select>
+        </div>
+        <div class="form-group"><label>Moneda</label>
+          <select id="editPedMoneda"><option>USD</option><option>Bs.</option></select>
+        </div>
+        <div class="form-group"><label>Estado</label>
+          <select id="editPedEstado">
+            <option value="pendiente_cobro">Pendiente cobro</option>
+            <option value="entregado">Entregado</option>
+            <option value="pagado">Pagado</option>
+            <option value="vencido">Vencido</option>
+          </select>
+        </div>
+        <div class="form-group full"><label>Notas del pedido</label>
+          <textarea id="editPedNotas" placeholder="Observaciones, instrucciones de entrega..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalEditarPedido')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEditarPedido()">💾 Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -1642,7 +1699,12 @@ async function savePedido(pdvId, ped) {
     condicion: ped.condicion, moneda: ped.moneda,
     estado: ped.estado, notas: ped.notas||''
   }, { onConflict: 'id' });
-  if (error) console.error('Pedido error:', error);
+  if (error) {
+    console.error('Pedido error:', JSON.stringify(error));
+    showToast('Error al guardar pedido: ' + (error.message || error.code), true);
+    return false;
+  }
+  return true;
 }
 
 // ══════════════════════════════════════════
@@ -2066,7 +2128,10 @@ function renderPedidos() {
     <div class="order-card">
       <div class="order-header">
         <div><div class="order-id">${p.id}</div><div class="order-date">${p.fecha} · ${p.condicion}</div></div>
-        <span class="tag ${eTag[p.estado]||'tag-amber'}">${eLabel[p.estado]||p.estado}</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="tag ${eTag[p.estado]||'tag-amber'}">${eLabel[p.estado]||p.estado}</span>
+          <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="abrirDetallePedido('${p.id}')">🔍 Detalle</button>
+        </div>
       </div>
       <div class="order-items">${p.items.map(i=>`${i.qty}x ${i.prod} @ $${i.price}`).join('<br>')}</div>
       ${p.notas?`<div style="font-size:11px;color:var(--text-muted);margin-top:5px">📝 ${p.notas}</div>`:''}
@@ -2711,6 +2776,149 @@ async function eliminarFactura(facId) {
   showToast('Factura eliminada ✓');
 }
 
+
+// ══════════════════════════════════════════
+//  DETALLE / EDITAR / ELIMINAR PEDIDO
+// ══════════════════════════════════════════
+function abrirDetallePedido(pedId) {
+  if (!activePDV) return;
+  const p = (activePDV.pedidos||[]).find(x=>x.id===pedId);
+  if (!p) return;
+
+  const eTag   = {pagado:'tag-green', entregado:'tag-blue', pendiente_cobro:'tag-amber', vencido:'tag-red'};
+  const eLabel = {pagado:'Pagado', entregado:'Entregado', pendiente_cobro:'Pendiente cobro', vencido:'Vencido'};
+
+  document.getElementById('detallePedidoBody').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+      <div>
+        <div style="font-size:17px;font-weight:700;color:var(--text)">${p.id}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${p.fecha} · ${p.condicion}</div>
+      </div>
+      <span class="tag ${eTag[p.estado]||'tag-amber'}">${eLabel[p.estado]||p.estado}</span>
+    </div>
+
+    <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📦 Productos (${p.items.length})</div>
+    ${p.items.map(i => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:7px;margin-bottom:6px">
+        <div style="font-size:13px;color:var(--text)">${i.qty}x ${i.prod}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--amber-lt)">$${(i.qty*i.price).toFixed(2)}</div>
+      </div>
+    `).join('')}
+
+    ${p.notas?`<div style="font-size:13px;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px">📝 ${p.notas}</div>`:''}
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <span style="font-size:13px;color:var(--text-muted)">Total del pedido</span>
+      <span style="font-size:18px;font-weight:700;color:var(--amber-lt)">${p.moneda} ${p.total.toFixed(2)}</span>
+    </div>
+  `;
+
+  document.getElementById('detallePedidoFooter').innerHTML = `
+    <button class="btn btn-ghost" style="color:var(--red);border-color:var(--red)" onclick="eliminarPedido('${p.id}')">🗑 Eliminar</button>
+    <button class="btn btn-ghost" onclick="abrirEditarPedido('${p.id}')">✏️ Editar</button>
+  `;
+
+  openModal('modalDetallePedido');
+}
+
+function addEditProductRowWith(prod, qty, price) {
+  const row = document.createElement('div');
+  row.className = 'product-row';
+  row.innerHTML = `
+    <select class="prod-select" onchange="autoPrecio(this)">${skuOptions()}</select>
+    <input type="number" class="prod-qty" placeholder="Cant." min="1" value="${qty}">
+    <input type="number" class="prod-price" placeholder="$ precio" min="0" step="0.01" value="${price}">
+    <button class="remove-btn" onclick="this.closest('.product-row').remove()">✕</button>`;
+  document.getElementById('editPedidoItems').appendChild(row);
+  // preseleccionar el producto correcto
+  const sel = row.querySelector('.prod-select');
+  for (let o of sel.options) { if (o.value === prod || o.text === prod) { sel.value = o.value; break; } }
+}
+
+function addEditProductRow() {
+  addEditProductRowWith('', 1, '');
+}
+
+function abrirEditarPedido(pedId) {
+  if (!activePDV) return;
+  const p = (activePDV.pedidos||[]).find(x=>x.id===pedId);
+  if (!p) return;
+  closeModal('modalDetallePedido');
+
+  document.getElementById('editPedId').value = p.id;
+  document.getElementById('editPedNotas').value = p.notas||'';
+  const setSelect = (id, val) => {
+    const s = document.getElementById(id);
+    for (let o of s.options) { if (o.value===val||o.text===val) { s.value=o.value; break; } }
+  };
+  setSelect('editPedCondicion', p.condicion);
+  setSelect('editPedMoneda', p.moneda);
+  setSelect('editPedEstado', p.estado);
+
+  const cont = document.getElementById('editPedidoItems');
+  cont.innerHTML = '';
+  p.items.forEach(i => addEditProductRowWith(i.prod, i.qty, i.price));
+
+  openModal('modalEditarPedido');
+}
+
+async function guardarEditarPedido() {
+  if (!activePDV) return;
+  const pedId = document.getElementById('editPedId').value;
+  const idx = (activePDV.pedidos||[]).findIndex(x=>x.id===pedId);
+  if (idx === -1) return;
+
+  const rows = document.querySelectorAll('#editPedidoItems .product-row');
+  const items = []; let total = 0;
+  rows.forEach(r => {
+    const prod  = r.querySelector('.prod-select').value;
+    const qty   = parseInt(r.querySelector('.prod-qty').value)||0;
+    const price = parseFloat(r.querySelector('.prod-price').value)||0;
+    if (qty > 0) { items.push({prod, qty, price}); total += qty*price; }
+  });
+  if (!items.length) { showToast('Agrega al menos un producto', true); return; }
+
+  const ped = activePDV.pedidos[idx];
+  ped.items     = items;
+  ped.total     = total;
+  ped.condicion = document.getElementById('editPedCondicion').value;
+  ped.moneda    = document.getElementById('editPedMoneda').value;
+  ped.estado    = document.getElementById('editPedEstado').value;
+  ped.notas     = document.getElementById('editPedNotas').value.trim();
+
+  showLoading('Actualizando pedido…');
+  await savePedido(activePDV.id, ped);
+  actualizarStatusPDV();
+  await savePDV(activePDV);
+  hideLoading();
+  closeModal('modalEditarPedido');
+  renderPedidos();
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+  renderRightPanel(); renderDashboard(); selectPDV(activePDV.id);
+  logActivity('pedido', `Pedido editado: <strong>${activePDV.nombre}</strong> ${ped.id}`);
+  showToast('Pedido actualizado ✓');
+}
+
+async function eliminarPedido(pedId) {
+  if (!activePDV) return;
+  const p = (activePDV.pedidos||[]).find(x=>x.id===pedId);
+  if (!p) return;
+  if (!confirm(`¿Eliminar el pedido ${p.id} por $${p.total.toFixed(2)}? Esta acción no se puede deshacer.`)) return;
+
+  showLoading('Eliminando pedido…');
+  await sb.from('pedidos').delete().eq('id', pedId);
+  activePDV.pedidos = (activePDV.pedidos||[]).filter(x=>x.id!==pedId);
+  actualizarStatusPDV();
+  await savePDV(activePDV);
+  hideLoading();
+  closeModal('modalDetallePedido');
+  renderPedidos();
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+  renderRightPanel(); renderDashboard(); selectPDV(activePDV.id);
+  logActivity('pedido', `Pedido eliminado ← <strong>${activePDV.nombre}</strong> ${p.id}`);
+  showToast('Pedido eliminado ✓');
+}
+
 function actualizarStatusPDV() {
   if (!activePDV) return;
   const deuda = calcDeuda(activePDV);
@@ -2811,6 +3019,56 @@ async function enviarWahaMensaje() {
 }
 
 // ── SKUs helper ──
+const PRECIOS_CAJA = {
+  "Glenfiddich 18": 1100.55,
+  "Glenfiddich 15": 497.97,
+  "Glenfiddich 12": 354.6,
+  "Hendrick Gin 0,7L": 155.02,
+  "Grant's TW 12": 110.4,
+  "Grant's TW 0,75l": 110.4,
+  "Grant's TW 1Lt": 153.6,
+  "Clan MacGregor": 80.08,
+  "Monkey S.": 139.2,
+  "Toff Blanco 0,75": 48.0,
+  "Toff Tinto 0,75": 48.0,
+  "Toff Rose 0,75": 48.0,
+  "Dewar's 15Y": 227.29,
+  "Dewar's 12Y": 220.8,
+  "Dewar's WL Ltrs": 153.6,
+  "William Lawson 1 Ltrs": 144.4,
+  "Grey Goose 0,7L": 172.8,
+  "Patrón Silver 0,75L": 556.8,
+  "Patrón Reposado 0,75L": 672.0,
+  "Cazadores Blanco": 268.8,
+  "Cazadores Reposado": 288.0,
+  "Martini Bianco": 67.2,
+  "Bicentenario": 1873.69,
+  "ST 1796 Speyside": 132.48,
+  "1796 Coffee": 132.48,
+  "ST 1796 Cacao": 132.48,
+  "ST 1796 N/I": 110.4,
+  "Linaje": 61.2,
+  "Selecto": 61.2,
+  "Orange": 60.52,
+  "Araku": 50.55,
+  "GR 1L": 73.07,
+  "GR 0,70L": 37.07,
+  "ST Blanco 0,70L": 33.39,
+  "Carta Roja": 41.75,
+  "Superior": 36.87,
+  "KC 1Lt": 46.07
+};
+
+function autoPrecio(selectEl) {
+  const row = selectEl.closest('.product-row');
+  if (!row) return;
+  const priceInput = row.querySelector('.prod-price');
+  const precio = PRECIOS_CAJA[selectEl.value];
+  if (precio !== undefined && priceInput) {
+    priceInput.value = precio.toFixed(2);
+  }
+}
+
 function skuOptions() {
   return `
     <optgroup label="─ RON SANTA TERESA ─">
@@ -2886,7 +3144,7 @@ function addProductRow() {
   const row = document.createElement('div');
   row.className = 'product-row';
   row.innerHTML = `
-    <select class="prod-select">${skuOptions()}</select>
+    <select class="prod-select" onchange="autoPrecio(this)">${skuOptions()}</select>
     <input type="number" class="prod-qty" placeholder="Cant." min="1" value="1">
     <input type="number" class="prod-price" placeholder="$ precio" min="0" step="0.01">
     <button class="remove-btn" onclick="this.closest('.product-row').remove()">✕</button>`;
@@ -3225,6 +3483,9 @@ function openModal(id) {
   if (id === 'modalFactura') {
     const hoy = new Date().toISOString().split('T')[0];
     if (!document.getElementById('facFecha').value) document.getElementById('facFecha').value = hoy;
+  }
+  if (id === 'modalPedido') {
+    document.querySelectorAll('#pedidoItems .prod-select').forEach(s => autoPrecio(s));
   }
   if (id === 'modalWahaMensaje') {
     const templates = [
@@ -4310,7 +4571,8 @@ function clearDay(did){
 // ══════════════════════════════════════════
 var CATALOG = (function(){
   function p(brand,bname,name,tag,gl,pres,desc,notas,serve){
-    return {brand:brand,brandName:bname,name:name,tag:tag,gl:gl,pres:pres,desc:desc,notas:notas,serve:serve};
+    var precioCaja = (typeof PRECIOS_CAJA !== 'undefined' && PRECIOS_CAJA[name] !== undefined) ? PRECIOS_CAJA[name] : null;
+    return {brand:brand,brandName:bname,name:name,tag:tag,gl:gl,pres:pres,desc:desc,notas:notas,serve:serve,precioCaja:precioCaja};
   }
   return [
     // SANTA TERESA
@@ -4668,7 +4930,8 @@ function renderCatalog(items){
       info.innerHTML='<div class="cat-card-name">'+item.name+'</div>'
         +'<div class="cat-card-sub">'+item.brandName+' &middot; '+item.gl+'GL</div>'
         +'<div class="cat-card-sub">'+item.pres+'</div>'
-        +'<span class="cat-tag" style="margin-left:0;margin-top:5px;display:inline-block;">'+item.tag+'</span>';
+        +'<span class="cat-tag" style="margin-left:0;margin-top:5px;display:inline-block;">'+item.tag+'</span>'
+        +(item.precioCaja?'<span class="cat-tag" style="margin-left:5px;margin-top:5px;display:inline-block;background:rgba(245,166,35,.18);border-color:var(--accent);color:var(--accent);font-weight:700;">$'+item.precioCaja.toFixed(2)+'/caja</span>':'');
 
       var chev=document.createElement('div');
       chev.className='cat-chev';
@@ -4681,7 +4944,7 @@ function renderCatalog(items){
       var bodyHtml='<div class="cat-section"><div class="cat-slbl">Descripcion</div><div class="cat-desc">'+item.desc+'</div></div>';
       if(item.notas)bodyHtml+='<div class="cat-notas"><span class="cat-notas-title">Notas de cata</span>'+item.notas+'</div>';
       if(item.serve)bodyHtml+='<div class="cat-serve"><span class="cat-serve-title">&#127865; Perfect Serve</span>'+item.serve+'</div>';
-      bodyHtml+='<div class="cat-row"><span class="cat-pill">'+item.pres+'</span><span class="cat-pill">'+item.gl+' GL</span></div>';
+      bodyHtml+='<div class="cat-row"><span class="cat-pill">'+item.pres+'</span><span class="cat-pill">'+item.gl+' GL</span>'+(item.precioCaja?'<span class="cat-pill" style="background:rgba(245,166,35,.15);border-color:var(--accent);color:var(--accent);font-weight:700;">$'+item.precioCaja.toFixed(2)+' / caja</span>':'')+'</div>';
 
       var body=document.createElement('div');
       body.className='cat-body';
