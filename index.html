@@ -1649,7 +1649,12 @@ async function saveFactura(pdvId, f) {
     vence: f.vence||null, descripcion: f.descripcion||'',
     estado: f.estado, pagos_aplicados: f.pagosAplicados||[]
   }, { onConflict: 'id' });
-  if (error) console.error('Factura error:', error);
+  if (error) {
+    console.error('Factura error:', JSON.stringify(error));
+    showToast('Error al guardar factura: ' + (error.message || error.code), true);
+    return false;
+  }
+  return true;
 }
 
 async function updateFacturaRemote(f) {
@@ -1657,7 +1662,10 @@ async function updateFacturaRemote(f) {
     saldo: f.saldo, estado: f.estado,
     pagos_aplicados: f.pagosAplicados||[]
   }).eq('id', f.id);
-  if (error) console.error('Update factura error:', error);
+  if (error) {
+    console.error('Update factura error:', JSON.stringify(error));
+    showToast('Error al actualizar factura: ' + (error.message || error.code), true);
+  }
 }
 
 // ══════════════════════════════════════════
@@ -1670,7 +1678,10 @@ async function savePago(pdvId, p) {
     metodo: p.metodo, ref: p.ref||'',
     nota: p.nota||'', factura_id: p.facturaId||null
   }, { onConflict: 'id' });
-  if (error) console.error('Pago error:', error);
+  if (error) {
+    console.error('Pago error:', JSON.stringify(error));
+    showToast('Error al guardar pago: ' + (error.message || error.code), true);
+  }
 }
 
 // ══════════════════════════════════════════
