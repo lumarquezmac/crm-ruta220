@@ -1469,24 +1469,26 @@ async function cargarPDVs() {
     const { data: dataPDVs, error: ePDV } = await sb.from('pdvs').select('*').order('nombre');
     if (ePDV) throw ePDV;
 
-    // Cargar pedidos, facturas, pagos, mensajes en paralelo
+    // Cargar pedidos, facturas, pagos, mensajes, tasks en paralelo
     const [
       { data: pedidos },
       { data: facturas },
       { data: pagos },
-      { data: mensajes }
+      { data: mensajes },
+      { data: tasks }
     ] = await Promise.all([
       sb.from('pedidos').select('*').order('created_at'),
       sb.from('facturas').select('*').order('fecha'),
       sb.from('pagos').select('*').order('created_at'),
       sb.from('mensajes').select('*').order('created_at'),
+      sb.from('tasks').select('*').order('fecha'),
     ]);
 
     // Ensamblar objetos PDV completos
     pdvs = dataPDVs.map(p => ({
       ...p,
       credito: parseFloat(p.credito) || 0,
-      tasks:    p.tasks || [],
+      tasks:    (tasks    || []).filter(x => x.pdv_id === p.id),
       pedidos:  (pedidos  || []).filter(x => x.pdv_id === p.id).map(x => ({...x, items: x.items || [], total: parseFloat(x.total)||0})),
       facturas: (facturas || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, saldo: parseFloat(x.saldo)||0, pagosAplicados: x.pagos_aplicados||[]})),
       pagos:    (pagos    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id})),
@@ -1898,6 +1900,7 @@ async function agregarTarea() {
   const now = new Date();
   const tarea = {
     id:    'T' + Date.now(),
+    pdv_id: activePDV.id,
     texto,
     done:  false,
     fecha: now.toLocaleDateString('es-VE', {day:'numeric', month:'short', year:'numeric'}),
@@ -1907,9 +1910,23 @@ async function agregarTarea() {
   activePDV.tasks.push(tarea);
   input.value = '';
   renderTasks();
-  const ok = await savePDV(activePDV);
-  if (ok) showToast('Tarea guardada ✓');
-  logActivity('task', `Tarea agregada en <strong>${activePDV.nombre}</strong>: ${texto}`);
+
+  // Guardar en tabla tasks de Supabase
+  const { error } = await sb.from('tasks').insert({
+    id: tarea.id,
+    pdv_id: activePDV.id,
+    texto: tarea.texto,
+    done: false,
+    fecha: tarea.fecha,
+    hora: tarea.hora
+  });
+  if (error) {
+    console.error('tasks insert error:', JSON.stringify(error));
+    showToast('Error: ' + (error.message || error.code), true);
+  } else {
+    showToast('Tarea guardada ✓');
+    logActivity('task', `Tarea agregada en <strong>${activePDV.nombre}</strong>: ${texto}`);
+  }
 }
 
 async function toggleTarea(id) {
@@ -1918,25 +1935,29 @@ async function toggleTarea(id) {
   if (!t) return;
   t.done = !t.done;
   renderTasks();
-  await savePDV(activePDV);
+  const { error } = await sb.from('tasks').update({ done: t.done }).eq('id', id);
+  if (error) console.error('toggleTarea error:', JSON.stringify(error));
 }
 
 async function eliminarTarea(id) {
   if (!activePDV) return;
   activePDV.tasks = (activePDV.tasks||[]).filter(x => x.id !== id);
   renderTasks();
-  await savePDV(activePDV);
+  const { error } = await sb.from('tasks').delete().eq('id', id);
+  if (error) console.error('eliminarTarea error:', JSON.stringify(error));
 }
 
 async function vaciarTareasCompletadas() {
   if (!activePDV) return;
-  const completadas = (activePDV.tasks||[]).filter(t => t.done).length;
-  if (completadas === 0) { showToast('No hay tareas completadas'); return; }
-  if (!confirm(`¿Eliminar ${completadas} tarea${completadas!==1?'s':''} completada${completadas!==1?'s':''}?`)) return;
+  const completadas = (activePDV.tasks||[]).filter(t => t.done);
+  if (completadas.length === 0) { showToast('No hay tareas completadas'); return; }
+  if (!confirm(`¿Eliminar ${completadas.length} tarea${completadas.length!==1?'s':''} completada${completadas.length!==1?'s':''}?`)) return;
+  const ids = completadas.map(t => t.id);
   activePDV.tasks = (activePDV.tasks||[]).filter(t => !t.done);
   renderTasks();
-  await savePDV(activePDV);
-  showToast(`${completadas} tarea${completadas!==1?'s':''} eliminada${completadas!==1?'s':''} ✓`);
+  const { error } = await sb.from('tasks').delete().in('id', ids);
+  if (error) console.error('vaciarTareas error:', JSON.stringify(error));
+  else showToast(`${completadas.length} tarea${completadas.length!==1?'s':''} eliminada${completadas.length!==1?'s':''} ✓`);
 }
 
 // Compatibilidad — funciones de chat que ya no se usan activamente
@@ -4729,4 +4750,4 @@ checkAuth();
 </script>
 
 </body>
-</html> 
+</html>
