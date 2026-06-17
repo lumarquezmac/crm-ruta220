@@ -1551,6 +1551,7 @@ const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
 let pdvs = [];
 let actividades = JSON.parse(localStorage.getItem('crm_actividades') || '[]');
 let activePDV = null;
+let ordenFacturasActual = 'reciente';
 let currentFilter = 'todos';
 
 // ── Indicador de conexión ──
@@ -2139,6 +2140,21 @@ function renderPedidos() {
     </div>`).join('');
 }
 
+function ordenarFacturas(lista, orden) {
+  switch(orden) {
+    case 'antigua': return lista.sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+    case 'mayor':   return lista.sort((a,b) => b.monto - a.monto);
+    case 'menor':   return lista.sort((a,b) => a.monto - b.monto);
+    case 'reciente':
+    default:        return lista.sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+  }
+}
+
+function cambiarOrdenFacturas(orden) {
+  ordenFacturasActual = orden;
+  renderCobranza();
+}
+
 function renderCobranza() {
   if (!activePDV) return;
   const facturas = activePDV.facturas || [];
@@ -2163,10 +2179,18 @@ function renderCobranza() {
     </div>
 
     <!-- Facturas -->
-    <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📄 Facturas</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">📄 Facturas</div>
+      ${facturas.length>1?`<select id="ordenFacturas" onchange="cambiarOrdenFacturas(this.value)" style="background:var(--card);border:1px solid var(--border);color:var(--text-dim);font-size:11px;padding:5px 8px;border-radius:6px;outline:none">
+        <option value="reciente" ${ordenFacturasActual==='reciente'?'selected':''}>Más reciente primero</option>
+        <option value="antigua" ${ordenFacturasActual==='antigua'?'selected':''}>Más antigua primero</option>
+        <option value="mayor" ${ordenFacturasActual==='mayor'?'selected':''}>Monto mayor a menor</option>
+        <option value="menor" ${ordenFacturasActual==='menor'?'selected':''}>Monto menor a mayor</option>
+      </select>`:''}
+    </div>
     ${!facturas.length
       ? `<div class="empty-state" style="padding:20px"><div class="empty-state-icon">📄</div><div class="empty-state-text">Sin facturas registradas.<br>Usa "Nueva factura" para agregar.</div></div>`
-      : [...facturas].reverse().map(f=>`
+      : ordenarFacturas([...facturas], ordenFacturasActual).map(f=>`
         <div class="order-card" style="margin-bottom:8px">
           <div class="order-header">
             <div>
