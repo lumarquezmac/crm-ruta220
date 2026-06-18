@@ -1,4 +1,4 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -965,9 +965,9 @@ html, body {
         <div class="pdv-stats-row" id="pvStats"></div>
       </div>
       <div class="tabs">
-        <div class="tab active" onclick="switchTab(this,'tabChat')">✅ Tareas</div>
+        <div class="tab active" onclick="switchTab(this,'tabCobranza')">💰 Cobranza</div>
+        <div class="tab" onclick="switchTab(this,'tabChat')">✅ Tareas</div>
         <div class="tab" onclick="switchTab(this,'tabPedidos')">📦 Pedidos</div>
-        <div class="tab" onclick="switchTab(this,'tabCobranza')">💰 Cobranza</div>
         <div class="tab" onclick="switchTab(this,'tabInfo')">📋 Info</div>
       </div>
 
@@ -2320,7 +2320,7 @@ function selectPDV(id) {
     <div class="pdv-stat"><div class="pdv-stat-label">Portafolio</div><div class="pdv-stat-val" style="font-size:11px;padding-top:2px">${activePDV.portafolio}</div></div>
   `;
   renderChat(); renderPedidos(); renderCobranza(); renderInfo();
-  switchTabById('tabChat');
+  switchTabById('tabCobranza');
   renderPDVList(document.getElementById('searchPDV').value, currentFilter);
   // mobile bottom nav
   setMobileNav('pdvs');
