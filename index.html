@@ -912,10 +912,10 @@ html, body {
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Ej: "¿qué PDVs llevan más de 15 días sin pagar?" · "¿cuál es mi PDV con más deuda?" · "resume mi cobranza pendiente"</div>
 
         <div id="iaKeyBlock" style="margin-bottom:10px">
-          <input type="password" id="iaApiKey" placeholder="Pega tu API key de Gemini aquí (no se guarda)"
+          <input type="password" id="iaApiKey" placeholder="Pega tu API key de OpenRouter aquí (sk-or-...) — no se guarda"
             style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;color:var(--text);font-size:12px;outline:none;font-family:inherit"
             onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'">
-          <div style="font-size:10px;color:var(--text-muted);margin-top:5px">🔒 Tu clave vive solo en esta pestaña, nunca se guarda ni se envía a ningún lado excepto a Google.</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:5px">🔒 Tu clave vive solo en esta pestaña, nunca se guarda ni se envía a ningún lado excepto a OpenRouter.</div>
         </div>
 
         <div style="display:flex;gap:8px">
@@ -996,6 +996,7 @@ html, body {
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="btn btn-ghost" onclick="abrirModalPDFColumnas()" title="Descargar estado de cuenta PDF">🖨️ PDF</button>
             <button class="btn btn-ghost" onclick="abrirModalPago()">💰 Registrar pago</button>
+            <button class="btn btn-ghost" onclick="abrirModalSaldoFavor()">⭐ Saldo a favor</button>
             <button class="btn btn-primary" onclick="openModal('modalFactura')">📄 Nueva factura</button>
           </div>
         </div>
@@ -1450,6 +1451,44 @@ html, body {
   </div>
 </div>
 
+<!-- MODAL: Registrar/Editar Saldo a Favor -->
+<div class="modal-overlay" id="modalSaldoFavor">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title" id="saldoFavorModalTitle">⭐ Saldo a Favor</span>
+      <button class="modal-close" onclick="closeModal('modalSaldoFavor')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="saldoFavorId">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Tipo de movimiento</label>
+          <select id="saldoFavorTipo">
+            <option value="exceso">Pago en exceso (cliente pagó de más)</option>
+            <option value="devolucion">Devolución de producto</option>
+            <option value="descuento">Descuento / ajuste a favor del cliente</option>
+            <option value="ajuste">Ajuste manual</option>
+            <option value="uso">Uso de saldo (descontar saldo a favor)</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>Monto *</label>
+          <input type="number" id="saldoFavorMonto" placeholder="0.00" min="0" step="0.01">
+          <div style="font-size:10px;color:var(--text-muted);margin-top:3px">Ingresa el monto en positivo. Si el tipo es "Uso de saldo" se restará automáticamente.</div>
+        </div>
+        <div class="form-group full">
+          <label>Nota</label>
+          <textarea id="saldoFavorNota" placeholder="Detalle del movimiento..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalSaldoFavor')">Cancelar</button>
+      <button class="btn btn-primary" id="saldoFavorBtnGuardar" onclick="guardarSaldoFavor()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Detalle de Factura -->
 <div class="modal-overlay" id="modalDetalleFactura">
   <div class="modal" style="max-width:480px">
@@ -1670,30 +1709,33 @@ async function cargarPDVs() {
     const { data: dataPDVs, error: ePDV } = await sb.from('pdvs').select('*').order('nombre');
     if (ePDV) throw ePDV;
 
-    // Cargar pedidos, facturas, pagos, mensajes, tasks en paralelo
+    // Cargar pedidos, facturas, pagos, mensajes, tasks, saldo_favor en paralelo
     const [
       { data: pedidos },
       { data: facturas },
       { data: pagos },
       { data: mensajes },
-      { data: tasks }
+      { data: tasks },
+      { data: saldoFavor }
     ] = await Promise.all([
       sb.from('pedidos').select('*').order('created_at'),
       sb.from('facturas').select('*').order('fecha'),
       sb.from('pagos').select('*').order('created_at'),
       sb.from('mensajes').select('*').order('created_at'),
       sb.from('tasks').select('*').order('fecha'),
+      sb.from('saldo_favor').select('*').order('fecha'),
     ]);
 
     // Ensamblar objetos PDV completos
     pdvs = dataPDVs.map(p => ({
       ...p,
       credito: parseFloat(p.credito) || 0,
-      tasks:    (tasks    || []).filter(x => x.pdv_id === p.id),
-      pedidos:  (pedidos  || []).filter(x => x.pdv_id === p.id).map(x => ({...x, items: x.items || [], total: parseFloat(x.total)||0})),
-      facturas: (facturas || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, saldo: parseFloat(x.saldo)||0, pagosAplicados: x.pagos_aplicados||[]})),
-      pagos:    (pagos    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id})),
-      chat:     (mensajes || []).filter(x => x.pdv_id === p.id),
+      tasks:      (tasks      || []).filter(x => x.pdv_id === p.id),
+      pedidos:    (pedidos    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, items: x.items || [], total: parseFloat(x.total)||0})),
+      facturas:   (facturas   || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, saldo: parseFloat(x.saldo)||0, pagosAplicados: x.pagos_aplicados||[]})),
+      pagos:      (pagos      || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id})),
+      chat:       (mensajes   || []).filter(x => x.pdv_id === p.id),
+      saldoFavor: (saldoFavor || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0})),
     }));
 
     setConexion(true);
@@ -1828,6 +1870,22 @@ async function savePago(pdvId, p) {
 }
 
 // ══════════════════════════════════════════
+//  SUPABASE: SALDO A FAVOR
+// ══════════════════════════════════════════
+async function saveSaldoFavorRemote(pdvId, m) {
+  const { error } = await sb.from('saldo_favor').upsert({
+    id: m.id, pdv_id: pdvId, fecha: m.fecha,
+    monto: m.monto, tipo: m.tipo, nota: m.nota||''
+  }, { onConflict: 'id' });
+  if (error) {
+    console.error('SaldoFavor error:', JSON.stringify(error));
+    showToast('Error al guardar saldo a favor: ' + (error.message || error.code), true);
+    return false;
+  }
+  return true;
+}
+
+// ══════════════════════════════════════════
 //  SUPABASE: MENSAJES (CHAT)
 // ══════════════════════════════════════════
 async function savemensaje(pdvId, m) {
@@ -1903,13 +1961,43 @@ function construirContextoIA() {
   return JSON.stringify(resumen);
 }
 
+async function llamarOpenRouter(apiKey, systemPrompt, pregunta, modelo) {
+  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': window.location.href,
+      'X-Title': 'Suite Ruta 220'
+    },
+    body: JSON.stringify({
+      model: modelo,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: pregunta }
+      ]
+    })
+  });
+
+  const data = await resp.json().catch(()=>({}));
+
+  if (!resp.ok || data?.error) {
+    const msg = data?.error?.message || data?.error || `HTTP ${resp.status}`;
+    const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    err.raw = data;
+    throw err;
+  }
+
+  return data?.choices?.[0]?.message?.content;
+}
+
 async function preguntarIA() {
   const apiKey   = document.getElementById('iaApiKey').value.trim();
   const pregunta = document.getElementById('iaPregunta').value.trim();
   const out       = document.getElementById('iaRespuesta');
   const btn       = document.getElementById('btnPreguntarIA');
 
-  if (!apiKey)   { showToast('Pega tu API key de Gemini primero', true); return; }
+  if (!apiKey)   { showToast('Pega tu API key de OpenRouter primero', true); return; }
   if (!pregunta) { showToast('Escribe una pregunta', true); return; }
 
   btn.disabled = true;
@@ -1927,26 +2015,30 @@ ${contexto}
 
 Responde la pregunta del usuario de forma breve, concreta y en español venezolano natural, citando nombres de PDVs y cifras exactas cuando aplique. Si la pregunta no se puede responder con estos datos, dilo claramente. No inventes información que no esté en los datos.`;
 
-  try {
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: pregunta }] }],
-        systemInstruction: { parts: [{ text: systemPrompt }] }
-      })
-    });
+  const modelosFallback = [
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'deepseek/deepseek-r1-distill-llama-70b:free',
+    'google/gemini-2.0-flash-exp:free',
+    'mistralai/mistral-small-3.1-24b-instruct:free',
+  ];
 
-    if (!resp.ok) {
-      const errData = await resp.json().catch(()=>({}));
-      throw new Error(errData?.error?.message || `HTTP ${resp.status}`);
+  let texto = null;
+  let ultimoError = null;
+
+  for (const modelo of modelosFallback) {
+    try {
+      texto = await llamarOpenRouter(apiKey, systemPrompt, pregunta, modelo);
+      if (texto) break;
+    } catch (err) {
+      console.error(`Fallo modelo ${modelo}:`, err.message, err.raw);
+      ultimoError = err;
     }
+  }
 
-    const data = await resp.json();
-    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No obtuve respuesta. Intenta de nuevo.';
+  if (texto) {
     out.textContent = texto;
-  } catch (err) {
-    out.textContent = '⚠️ Error: ' + err.message;
+  } else {
+    out.textContent = '⚠️ Error: ' + (ultimoError?.message || 'todos los modelos fallaron') + '\n\n(revisa la consola del navegador para más detalle)';
   }
 
   btn.disabled = false;
@@ -2327,23 +2419,27 @@ function renderCobranza() {
   if (!activePDV) return;
   const facturas = activePDV.facturas || [];
   const pagos    = activePDV.pagos || [];
+  const saldoFavorMovs = activePDV.saldoFavor || [];
 
   // totales
   const totalFacturado  = facturas.reduce((s,f)=>s+f.monto,0);
   const totalCobrado    = pagos.reduce((s,p)=>s+p.monto,0);
   const totalPendiente  = facturas.filter(f=>f.estado!=='pagada').reduce((s,f)=>s+f.saldo,0);
   const facVencidas     = facturas.filter(f=>f.estado==='vencida').length;
+  const totalSaldoFavor = saldoFavorMovs.reduce((s,m)=>s+m.monto,0);
 
   const eTag   = {pendiente:'tag-amber', vencida:'tag-red', pagada:'tag-green', parcial:'tag-blue'};
   const eLabel = {pendiente:'Pendiente', vencida:'Vencida', pagada:'Pagada', parcial:'Parcial'};
+  const tipoSaldoLabel = {exceso:'Pago en exceso', devolucion:'Devolución', descuento:'Descuento', ajuste:'Ajuste manual', uso:'Uso de saldo'};
 
   document.getElementById('cobranzaView').innerHTML = `
     <!-- Resumen -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px">
       <div class="pdv-stat"><div class="pdv-stat-label">Facturado</div><div class="pdv-stat-val amber">$${totalFacturado.toFixed(2)}</div></div>
       <div class="pdv-stat"><div class="pdv-stat-label">Cobrado</div><div class="pdv-stat-val green">$${totalCobrado.toFixed(2)}</div></div>
       <div class="pdv-stat"><div class="pdv-stat-label">Por cobrar</div><div class="pdv-stat-val ${totalPendiente>0?'red':'green'}">$${totalPendiente.toFixed(2)}</div></div>
       <div class="pdv-stat"><div class="pdv-stat-label">Vencidas</div><div class="pdv-stat-val ${facVencidas>0?'red':'green'}">${facVencidas}</div></div>
+      <div class="pdv-stat"><div class="pdv-stat-label">⭐ Saldo a favor</div><div class="pdv-stat-val ${totalSaldoFavor>0?'blue':'green'}">$${totalSaldoFavor.toFixed(2)}</div></div>
     </div>
 
     <!-- Facturas -->
@@ -2401,6 +2497,30 @@ function renderCobranza() {
           <div class="order-total">
             <span style="color:var(--text-muted)">Monto cobrado</span>
             <span style="color:var(--green)">${p.moneda} ${p.monto.toFixed(2)}</span>
+          </div>
+        </div>`).join('')}
+
+    <!-- Saldo a favor -->
+    <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px">⭐ Movimientos de saldo a favor</div>
+    ${!saldoFavorMovs.length
+      ? `<div class="empty-state" style="padding:16px"><div class="empty-state-icon">⭐</div><div class="empty-state-text">Sin movimientos de saldo a favor</div></div>`
+      : [...saldoFavorMovs].reverse().map(m=>`
+        <div class="order-card" style="margin-bottom:8px">
+          <div class="order-header">
+            <div>
+              <div class="order-id">${m.id}</div>
+              <div class="order-date">${m.fecha} · ${tipoSaldoLabel[m.tipo]||m.tipo}</div>
+            </div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <span class="tag ${m.monto>=0?'tag-blue':'tag-amber'}">${m.monto>=0?'+ Crédito':'− Uso'}</span>
+              <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="abrirEditarSaldoFavor('${m.id}')">✏️</button>
+              <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:var(--red);border-color:var(--red)" onclick="eliminarSaldoFavor('${m.id}')">🗑</button>
+            </div>
+          </div>
+          ${m.nota?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${m.nota}</div>`:''}
+          <div class="order-total">
+            <span style="color:var(--text-muted)">Monto</span>
+            <span style="color:${m.monto>=0?'var(--blue)':'var(--amber-lt)'}">${m.monto>=0?'+':''}$${m.monto.toFixed(2)}</span>
           </div>
         </div>`).join('')}
   `;
@@ -3109,6 +3229,91 @@ async function eliminarPedido(pedId) {
   renderRightPanel(); renderDashboard(); selectPDV(activePDV.id);
   logActivity('pedido', `Pedido eliminado ← <strong>${activePDV.nombre}</strong> ${p.id}`);
   showToast('Pedido eliminado ✓');
+}
+
+// ══════════════════════════════════════════
+//  SALDO A FAVOR — Registrar / Editar / Eliminar
+// ══════════════════════════════════════════
+function abrirModalSaldoFavor() {
+  if (!activePDV) return;
+  document.getElementById('saldoFavorId').value = '';
+  document.getElementById('saldoFavorTipo').value = 'exceso';
+  document.getElementById('saldoFavorMonto').value = '';
+  document.getElementById('saldoFavorNota').value = '';
+  document.getElementById('saldoFavorModalTitle').textContent = '⭐ Registrar Saldo a Favor';
+  document.getElementById('saldoFavorBtnGuardar').textContent = '💾 Guardar';
+  openModal('modalSaldoFavor');
+}
+
+function abrirEditarSaldoFavor(id) {
+  if (!activePDV) return;
+  const m = (activePDV.saldoFavor||[]).find(x=>x.id===id);
+  if (!m) return;
+  document.getElementById('saldoFavorId').value = m.id;
+  document.getElementById('saldoFavorTipo').value = m.tipo;
+  document.getElementById('saldoFavorMonto').value = Math.abs(m.monto);
+  document.getElementById('saldoFavorNota').value = m.nota||'';
+  document.getElementById('saldoFavorModalTitle').textContent = '✏️ Editar Saldo a Favor';
+  document.getElementById('saldoFavorBtnGuardar').textContent = '💾 Guardar cambios';
+  openModal('modalSaldoFavor');
+}
+
+async function guardarSaldoFavor() {
+  if (!activePDV) return;
+  const id     = document.getElementById('saldoFavorId').value;
+  const tipo   = document.getElementById('saldoFavorTipo').value;
+  const montoAbs = parseFloat(document.getElementById('saldoFavorMonto').value)||0;
+  const nota   = document.getElementById('saldoFavorNota').value.trim();
+
+  if (montoAbs <= 0) { showToast('Ingresa un monto válido', true); return; }
+
+  // "uso" siempre resta, todos los demás tipos suman
+  const monto = tipo === 'uso' ? -montoAbs : montoAbs;
+
+  if (!activePDV.saldoFavor) activePDV.saldoFavor = [];
+
+  let mov;
+  if (id) {
+    mov = activePDV.saldoFavor.find(x=>x.id===id);
+    if (!mov) return;
+    mov.tipo = tipo; mov.monto = monto; mov.nota = nota;
+  } else {
+    mov = {
+      id: 'SF' + Date.now(),
+      fecha: new Date().toISOString().split('T')[0],
+      tipo, monto, nota
+    };
+    activePDV.saldoFavor.push(mov);
+  }
+
+  showLoading('Guardando…');
+  const ok = await saveSaldoFavorRemote(activePDV.id, mov);
+  hideLoading();
+  if (!ok) return;
+
+  closeModal('modalSaldoFavor');
+  renderCobranza();
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+  renderRightPanel(); renderDashboard();
+  logActivity('cobro', `Saldo a favor ${monto>=0?'+':''}$${monto.toFixed(2)} → <strong>${activePDV.nombre}</strong>`);
+  showToast('Saldo a favor guardado ✓');
+}
+
+async function eliminarSaldoFavor(id) {
+  if (!activePDV) return;
+  const m = (activePDV.saldoFavor||[]).find(x=>x.id===id);
+  if (!m) return;
+  if (!confirm(`¿Eliminar este movimiento de saldo a favor de $${Math.abs(m.monto).toFixed(2)}?`)) return;
+
+  showLoading('Eliminando…');
+  await sb.from('saldo_favor').delete().eq('id', id);
+  activePDV.saldoFavor = (activePDV.saldoFavor||[]).filter(x=>x.id!==id);
+  hideLoading();
+  renderCobranza();
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+  renderRightPanel(); renderDashboard();
+  logActivity('cobro', `Saldo a favor eliminado ← <strong>${activePDV.nombre}</strong>`);
+  showToast('Movimiento eliminado ✓');
 }
 
 function actualizarStatusPDV() {
