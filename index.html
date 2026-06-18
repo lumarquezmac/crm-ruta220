@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -890,6 +890,14 @@ html, body {
         <div class="filter-tab" onclick="filterByStatus(this,'amarillo')">Pend.</div>
         <div class="filter-tab" onclick="filterByStatus(this,'rojo')">Vencido</div>
       </div>
+      <div class="filter-tabs" id="zonaTabs" style="margin-top:8px;flex-wrap:wrap;gap:6px">
+        <div class="filter-tab active" onclick="filterByZonaTab(this,'todas')">📍 Todas</div>
+        <div class="filter-tab" onclick="filterByZonaTab(this,'Cuentas Claves')">Cuentas Claves</div>
+        <div class="filter-tab" onclick="filterByZonaTab(this,'Pampatar-Los Robles')">Pampatar-Los Robles</div>
+        <div class="filter-tab" onclick="filterByZonaTab(this,'Centro-4 de Mayo')">Centro-4 de Mayo</div>
+        <div class="filter-tab" onclick="filterByZonaTab(this,'Asunción-Atamo')">Asunción-Atamo</div>
+        <div class="filter-tab" onclick="filterByZonaTab(this,'Sin asignar')">Sin asignar</div>
+      </div>
     </div>
     <div class="pdv-list" id="pdvList"></div>
   </aside>
@@ -930,6 +938,10 @@ html, body {
       </div>
 
       <div class="dash-grid" id="dashKPIs"></div>
+
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📍 Resumen por zona</div>
+      <div id="dashZonas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:20px"></div>
+
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">PDVs con deuda pendiente</div>
       <div id="dashDeudas"></div>
     </div>
@@ -944,6 +956,7 @@ html, body {
           </div>
           <div class="pdv-actions">
             <button class="btn btn-ghost" onclick="irAlDashboard()" title="Volver al inicio">🏠 Inicio</button>
+            <button class="btn btn-ghost" id="btnVerMapa" style="display:none" onclick="abrirEnGoogleMaps()" title="Abrir ubicación en Google Maps">📍 Maps</button>
             <button class="btn btn-wa" onclick="abrirWhatsApp()">💬 WA</button>
             <button class="btn btn-ghost" onclick="abrirEditPDV()">✏️ Editar</button>
             <button class="btn btn-primary" onclick="openModal('modalPedido')">+ Pedido</button>
@@ -1075,8 +1088,20 @@ html, body {
         <div class="form-group"><label>RIF / Cédula</label><input type="text" id="nRIF" placeholder="J-12345678-9"></div>
         <div class="form-group"><label>Teléfono / WhatsApp *</label><input type="text" id="nTel" placeholder="0414-1234567"></div>
         <div class="form-group full"><label>Dirección</label><input type="text" id="nDir" placeholder="Sector, municipio..."></div>
+        <div class="form-group"><label>Latitud</label><input type="text" id="nLat" placeholder="Ej: 10.9678"></div>
+        <div class="form-group"><label>Longitud</label><input type="text" id="nLng" placeholder="Ej: -63.8589"></div>
+        <div class="form-group full" style="margin-top:-8px"><div style="font-size:10px;color:var(--text-muted)">💡 Abre Google Maps, mantén presionado el punto exacto del PDV, copia las coordenadas que aparecen y pégalas aquí (lat, lng separadas por coma).</div></div>
         <div class="form-group"><label>Tipo de negocio</label>
           <select id="nTipo"><option>Bodegón</option><option>Licorera</option><option>Supermercado</option><option>Bar / Restaurant</option><option>Hotel</option><option>Panadería</option><option>Otro</option></select>
+        </div>
+        <div class="form-group"><label>Zona</label>
+          <select id="nZona">
+            <option value="">Sin asignar</option>
+            <option>Cuentas Claves</option>
+            <option>Pampatar-Los Robles</option>
+            <option>Centro-4 de Mayo</option>
+            <option>Asunción-Atamo</option>
+          </select>
         </div>
         <div class="form-group"><label>Portafolio activo</label>
           <select id="nPortafolio"><option>RONES + UPA</option><option>Solo RONES</option><option>Solo UPA</option></select>
@@ -1285,8 +1310,19 @@ html, body {
         <div class="form-group"><label>RIF / Cédula</label><input type="text" id="eRIF"></div>
         <div class="form-group"><label>Teléfono / WhatsApp *</label><input type="text" id="eTel"></div>
         <div class="form-group full"><label>Dirección</label><input type="text" id="eDir"></div>
+        <div class="form-group"><label>Latitud</label><input type="text" id="eLat" placeholder="Ej: 10.9678"></div>
+        <div class="form-group"><label>Longitud</label><input type="text" id="eLng" placeholder="Ej: -63.8589"></div>
         <div class="form-group"><label>Tipo de negocio</label>
           <select id="eTipo"><option>Bodegón</option><option>Licorera</option><option>Supermercado</option><option>Bar / Restaurant</option><option>Hotel</option><option>Panadería</option><option>Otro</option></select>
+        </div>
+        <div class="form-group"><label>Zona</label>
+          <select id="eZona">
+            <option value="">Sin asignar</option>
+            <option>Cuentas Claves</option>
+            <option>Pampatar-Los Robles</option>
+            <option>Centro-4 de Mayo</option>
+            <option>Asunción-Atamo</option>
+          </select>
         </div>
         <div class="form-group"><label>Portafolio activo</label>
           <select id="ePortafolio"><option>RONES + UPA</option><option>Solo RONES</option><option>Solo UPA</option></select>
@@ -1666,6 +1702,7 @@ let actividades = JSON.parse(localStorage.getItem('crm_actividades') || '[]');
 let activePDV = null;
 let ordenFacturasActual = 'reciente';
 let currentFilter = 'todos';
+let currentZonaFilter = 'todas';
 
 // ── Indicador de conexión ──
 function setConexion(ok) {
@@ -1784,9 +1821,9 @@ async function savePDV(p) {
   const row = {
     id: p.id, nombre: p.nombre, tipo: p.tipo, tel: p.tel,
     rif: p.rif||'', dir: p.dir||'', portafolio: p.portafolio,
+    lat: p.lat||'', lng: p.lng||'',
     credito: p.credito||0, frecuencia: p.frecuencia,
-    notas: p.notas||'', status: p.status,
-    tasks: JSON.parse(JSON.stringify(p.tasks||[]))
+    notas: p.notas||'', status: p.status, zona: p.zona||''
   };
   const { data, error } = await sb.from('pdvs').upsert(row, { onConflict: 'id' }).select();
   if (error) {
@@ -2182,16 +2219,41 @@ function renderPDVListTo(containerId, filter='', statusFilter='todos') {
   const filtered = pdvs.filter(p => {
     const mt = p.nombre.toLowerCase().includes(filter.toLowerCase());
     const ms = statusFilter==='todos' || p.status===statusFilter;
-    return mt && ms;
+    const mz = currentZonaFilter==='todas' || (p.zona||'Sin asignar')===currentZonaFilter;
+    return mt && ms && mz;
   });
   if (containerId === 'pdvList') document.getElementById('pdvCount').textContent = filtered.length;
-  cont.innerHTML = filtered.map(p => {
+
+  const itemHtml = p => {
     const deuda = calcDeuda(p);
     return `<div class="pdv-item ${activePDV?.id===p.id?'active':''}" onclick="selectPDV('${p.id}')">
       <div class="pdv-row1"><div class="pdv-name">${p.nombre}</div><div class="pdv-status ${p.status}"></div></div>
       <div class="pdv-row2"><span>${p.tipo}</span><span class="pdv-debt ${deuda===0?'zero':''}">${deuda===0?'✓ Al día':'$'+deuda.toFixed(2)}</span></div>
     </div>`;
-  }).join('');
+  };
+
+  // Si hay un filtro de zona específico activo, lista plana sin encabezados
+  if (currentZonaFilter !== 'todas') {
+    cont.innerHTML = filtered.map(itemHtml).join('') || `<div class="empty-state" style="padding:20px"><div class="empty-state-text">Sin PDVs en esta zona</div></div>`;
+    return;
+  }
+
+  // Vista "todas las zonas": agrupar visualmente por zona
+  const ZONAS_ORDEN = ['Cuentas Claves','Pampatar-Los Robles','Centro-4 de Mayo','Asunción-Atamo','Sin asignar'];
+  const grupos = {};
+  filtered.forEach(p => {
+    const z = p.zona || 'Sin asignar';
+    if (!grupos[z]) grupos[z] = [];
+    grupos[z].push(p);
+  });
+
+  let html = '';
+  ZONAS_ORDEN.forEach(z => {
+    if (!grupos[z] || !grupos[z].length) return;
+    html += `<div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;padding:10px 4px 5px;display:flex;justify-content:space-between"><span>${z}</span><span>${grupos[z].length}</span></div>`;
+    html += grupos[z].map(itemHtml).join('');
+  });
+  cont.innerHTML = html || `<div class="empty-state" style="padding:20px"><div class="empty-state-text">Sin PDVs</div></div>`;
 }
 
 function renderPDVList(filter='', statusFilter='todos') {
@@ -2200,6 +2262,22 @@ function renderPDVList(filter='', statusFilter='todos') {
 }
 
 function filterPDVs(val) { renderPDVList(val, currentFilter); }
+function filterByZonaTab(el, zona) {
+  document.querySelectorAll('#zonaTabs .filter-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  currentZonaFilter = zona;
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+}
+
+function irAZonaDesdeDashboard(zona) {
+  const tabs = document.querySelectorAll('#zonaTabs .filter-tab');
+  tabs.forEach(t => {
+    const matches = t.textContent.trim().replace('📍 ','') === zona || (zona==='todas' && t.textContent.includes('Todas'));
+    t.classList.toggle('active', matches);
+  });
+  currentZonaFilter = zona;
+  renderPDVList(document.getElementById('searchPDV').value, currentFilter);
+}
 function filterByStatus(el, status) {
   document.querySelectorAll('.filter-tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
@@ -2229,6 +2307,9 @@ function selectPDV(id) {
 
   document.getElementById('pvNombre').textContent = activePDV.nombre;
   document.getElementById('pvSub').textContent = `${activePDV.tipo} · ${activePDV.dir} · ${activePDV.tel}`;
+
+  const btnMapa = document.getElementById('btnVerMapa');
+  if (btnMapa) btnMapa.style.display = (activePDV.lat && activePDV.lng) ? 'inline-flex' : 'none';
 
   const deuda = calcDeuda(activePDV);
   const totalV = (activePDV.pedidos||[]).reduce((s,x)=>s+x.total,0);
@@ -2377,6 +2458,11 @@ function abrirWhatsApp() {
   const tel = activePDV.tel.replace(/\D/g,'');
   const num = tel.startsWith('58') ? tel : '58'+tel.replace(/^0/,'');
   window.open(`https://wa.me/${num}`, '_blank');
+}
+
+function abrirEnGoogleMaps() {
+  if (!activePDV || !activePDV.lat || !activePDV.lng) return;
+  window.open(`https://www.google.com/maps/search/?api=1&query=${activePDV.lat},${activePDV.lng}`, '_blank');
 }
 
 function renderPedidos() {
@@ -2536,6 +2622,7 @@ function renderInfo() {
       <div class="pdv-stat"><div class="pdv-stat-label">RIF</div><div style="font-size:13px;color:var(--text-dim)">${activePDV.rif||'—'}</div></div>
       <div class="pdv-stat"><div class="pdv-stat-label">Frecuencia</div><div style="font-size:13px;color:var(--text-dim)">${activePDV.frecuencia}</div></div>
       <div class="pdv-stat" style="grid-column:1/-1"><div class="pdv-stat-label">Dirección</div><div style="font-size:13px;color:var(--text-dim)">${activePDV.dir||'—'}</div></div>
+      ${activePDV.lat && activePDV.lng ? `<div class="pdv-stat" style="grid-column:1/-1;cursor:pointer" onclick="abrirEnGoogleMaps()"><div class="pdv-stat-label">📍 Ubicación GPS</div><div style="font-size:13px;color:var(--blue)">${activePDV.lat}, ${activePDV.lng} · Ver en Maps →</div></div>` : ''}
       <div class="pdv-stat" style="grid-column:1/-1"><div class="pdv-stat-label">WhatsApp</div><div style="font-size:13px;color:var(--whatsapp)">${activePDV.tel}</div></div>
       ${activePDV.notas?`<div class="pdv-stat" style="grid-column:1/-1"><div class="pdv-stat-label">Notas</div><div style="font-size:13px;color:var(--text-dim)">${activePDV.notas}</div></div>`:''}
     </div>`;
@@ -2575,6 +2662,26 @@ function renderDashboard() {
           <div><div style="font-weight:600;font-size:13px">${p.nombre}</div><div style="font-size:11px;color:var(--text-muted)">${p.tipo} · ${p.tel}</div></div>
           <span style="color:var(--red);font-weight:700;font-family:'Space Grotesk',sans-serif;font-size:16px">$${calcDeuda(p).toFixed(2)}</span>
         </div></div>`).join('');
+
+  // KPIs por zona
+  const ZONAS_ORDEN = ['Cuentas Claves','Pampatar-Los Robles','Centro-4 de Mayo','Asunción-Atamo','Sin asignar'];
+  const zonaStats = {};
+  pdvs.forEach(p => {
+    const z = p.zona || 'Sin asignar';
+    if (!zonaStats[z]) zonaStats[z] = { count:0, ventas:0, deuda:0 };
+    zonaStats[z].count++;
+    zonaStats[z].ventas += (p.pedidos||[]).reduce((s,x)=>s+x.total,0);
+    zonaStats[z].deuda  += calcDeuda(p);
+  });
+  document.getElementById('dashZonas').innerHTML = ZONAS_ORDEN
+    .filter(z => zonaStats[z])
+    .map(z => `
+      <div class="dash-card" style="cursor:pointer" onclick="irAZonaDesdeDashboard('${z}')">
+        <div class="dash-card-title">${z}</div>
+        <div class="dash-card-val" style="font-size:20px">${zonaStats[z].count} PDVs</div>
+        <div class="dash-card-sub">Ventas: $${zonaStats[z].ventas.toLocaleString('es-VE',{minimumFractionDigits:0})}</div>
+        <div class="dash-card-sub" style="color:${zonaStats[z].deuda>0?'var(--red)':'var(--green)'}">Deuda: $${zonaStats[z].deuda.toFixed(2)}</div>
+      </div>`).join('');
 }
 
 function renderRightPanel() {
@@ -2622,7 +2729,10 @@ async function crearPDV() {
     id:'pdv'+Date.now(), nombre, tel,
     rif:document.getElementById('nRIF').value,
     dir:document.getElementById('nDir').value,
+    lat:document.getElementById('nLat').value.trim(),
+    lng:document.getElementById('nLng').value.trim(),
     tipo:document.getElementById('nTipo').value,
+    zona:document.getElementById('nZona').value,
     portafolio:document.getElementById('nPortafolio').value,
     credito:parseFloat(document.getElementById('nCredito').value)||0,
     frecuencia:document.getElementById('nFrecuencia').value,
@@ -2647,10 +2757,13 @@ function abrirEditPDV() {
   document.getElementById('eRIF').value     = activePDV.rif||'';
   document.getElementById('eTel').value     = activePDV.tel;
   document.getElementById('eDir').value     = activePDV.dir||'';
+  document.getElementById('eLat').value     = activePDV.lat||'';
+  document.getElementById('eLng').value     = activePDV.lng||'';
   document.getElementById('eNotas').value   = activePDV.notas||'';
   document.getElementById('eCredito').value = activePDV.credito||0;
   const setSelect = (id, val) => { const s=document.getElementById(id); for(let o of s.options){if(o.value===val||o.text===val){s.value=o.value;break;}} };
   setSelect('eTipo', activePDV.tipo);
+  setSelect('eZona', activePDV.zona||'');
   setSelect('ePortafolio', activePDV.portafolio);
   setSelect('eFrecuencia', activePDV.frecuencia);
   setSelect('eStatus', activePDV.status);
@@ -2665,7 +2778,10 @@ async function guardarEditPDV() {
   activePDV.rif        = document.getElementById('eRIF').value.trim();
   activePDV.tel        = tel;
   activePDV.dir        = document.getElementById('eDir').value.trim();
+  activePDV.lat        = document.getElementById('eLat').value.trim();
+  activePDV.lng        = document.getElementById('eLng').value.trim();
   activePDV.tipo       = document.getElementById('eTipo').value;
+  activePDV.zona       = document.getElementById('eZona').value;
   activePDV.portafolio = document.getElementById('ePortafolio').value;
   activePDV.credito    = parseFloat(document.getElementById('eCredito').value)||0;
   activePDV.frecuencia = document.getElementById('eFrecuencia').value;
