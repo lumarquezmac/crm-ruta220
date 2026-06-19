@@ -537,6 +537,55 @@ html, body {
     display:flex; align-items:center; justify-content:space-between;
     position:sticky; top:0; z-index:100;
   }
+
+  /* TICKER DE TAREAS — estilo Nasdaq */
+  .ticker-bar {
+    background:#0D0804; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; height:30px;
+    position:sticky; top:var(--nav-h); z-index:99; overflow:hidden;
+  }
+  #moduleCRM.light-mode .ticker-bar { background:#1A1208; }
+  .ticker-label {
+    flex-shrink:0; display:flex; align-items:center; gap:5px;
+    background:var(--amber); color:var(--caoba); font-weight:700;
+    font-size:10.5px; padding:0 12px; height:100%; cursor:pointer;
+    white-space:nowrap; user-select:none;
+  }
+  .ticker-track-wrap { flex:1; overflow:hidden; height:100%; position:relative; }
+  .ticker-track {
+    display:flex; align-items:center; gap:0; height:100%;
+    white-space:nowrap; will-change:transform;
+    animation: ticker-scroll 40s linear infinite;
+  }
+  .ticker-track:hover { animation-play-state: paused; }
+  @keyframes ticker-scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  .ticker-item {
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:11.5px; padding:0 18px; flex-shrink:0;
+    border-right:1px solid var(--border); height:100%;
+    color:var(--text-dim); cursor:pointer;
+  }
+  .ticker-item:hover { color:var(--text); }
+  .ticker-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .ticker-dot.urgente { background:var(--red); box-shadow:0 0 4px var(--red); }
+  .ticker-dot.normal  { background:var(--amber-lt); }
+  .ticker-pdv { font-weight:700; color:var(--amber-lt); }
+  .ticker-empty { font-size:11px; color:var(--text-muted); padding:0 16px; }
+
+  .ticker-expand {
+    background:var(--surface); border-bottom:1px solid var(--border);
+    max-height:240px; overflow-y:auto; padding:8px 16px;
+  }
+  .ticker-expand-item {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 6px; border-bottom:1px solid var(--border); font-size:12.5px; cursor:pointer;
+  }
+  .ticker-expand-item:last-child { border-bottom:none; }
+  .ticker-expand-item:hover { background:var(--card); }
+
   .topbar-brand { display:flex; align-items:center; gap:10px; }
   .brand-dot {
     width:32px; height:32px;
@@ -872,6 +921,15 @@ html, body {
     <button class="btn btn-primary" onclick="openModal('modalNuevoPDV')">+ PDV</button>
   </div>
 </div>
+
+<!-- TICKER DE TAREAS PENDIENTES -->
+<div class="ticker-bar" id="tickerBar" style="display:none">
+  <div class="ticker-label" onclick="toggleTickerExpand()">⚡ <span id="tickerCount">0 pendientes</span> <span id="tickerArrow">▾</span></div>
+  <div class="ticker-track-wrap">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+</div>
+<div class="ticker-expand" id="tickerExpand" style="display:none"></div>
 
 <!-- APP -->
 <div class="app">
@@ -2396,6 +2454,7 @@ async function agregarTarea() {
   activePDV.tasks.push(tarea);
   input.value = '';
   renderTasks();
+  renderTicker();
 
   // Guardar en tabla tasks de Supabase
   const { error } = await sb.from('tasks').insert({
@@ -2421,6 +2480,7 @@ async function toggleTarea(id) {
   if (!t) return;
   t.done = !t.done;
   renderTasks();
+  renderTicker();
   const { error } = await sb.from('tasks').update({ done: t.done }).eq('id', id);
   if (error) console.error('toggleTarea error:', JSON.stringify(error));
 }
@@ -2429,6 +2489,7 @@ async function eliminarTarea(id) {
   if (!activePDV) return;
   activePDV.tasks = (activePDV.tasks||[]).filter(x => x.id !== id);
   renderTasks();
+  renderTicker();
   const { error } = await sb.from('tasks').delete().eq('id', id);
   if (error) console.error('eliminarTarea error:', JSON.stringify(error));
 }
@@ -2628,7 +2689,81 @@ function renderInfo() {
     </div>`;
 }
 
+// ══════════════════════════════════════════
+//  TICKER DE TAREAS — estilo Nasdaq
+// ══════════════════════════════════════════
+let tickerExpanded = false;
+
+function recolectarTareasPendientes() {
+  const items = [];
+  pdvs.forEach(p => {
+    (p.tasks||[]).filter(t=>!t.done).forEach(t => {
+      items.push({ pdvId: p.id, pdvNombre: p.nombre, texto: t.texto || t.text || '(sin descripción)', urgente: !!t.urgente });
+    });
+  });
+  return items;
+}
+
+function renderTicker() {
+  const bar   = document.getElementById('tickerBar');
+  const track = document.getElementById('tickerTrack');
+  const count = document.getElementById('tickerCount');
+  const exp   = document.getElementById('tickerExpand');
+  if (!bar || !track) return;
+
+  const items = recolectarTareasPendientes();
+
+  if (!items.length) {
+    bar.style.display = 'none';
+    exp.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  count.textContent = `${items.length} pendiente${items.length!==1?'s':''}`;
+
+  const itemHtml = it => `
+    <div class="ticker-item" onclick="selectPDV('${it.pdvId}');switchTabById('tabChat')">
+      <span class="ticker-dot ${it.urgente?'urgente':'normal'}"></span>
+      <span class="ticker-pdv">${it.pdvNombre}</span>
+      <span>${it.texto}</span>
+    </div>`;
+
+  // Duplicar la lista para que el loop de la animación sea continuo sin saltos
+  const html = items.map(itemHtml).join('');
+  track.innerHTML = html + html;
+
+  if (tickerExpanded) renderTickerExpand(items);
+}
+
+function renderTickerExpand(items) {
+  const exp = document.getElementById('tickerExpand');
+  if (!exp) return;
+  exp.innerHTML = items.map(it => `
+    <div class="ticker-expand-item" onclick="selectPDV('${it.pdvId}');switchTabById('tabChat');toggleTickerExpand()">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="ticker-dot ${it.urgente?'urgente':'normal'}"></span>
+        <span><strong style="color:var(--amber-lt)">${it.pdvNombre}</strong> — ${it.texto}</span>
+      </div>
+      <span style="color:var(--text-muted);font-size:11px">→</span>
+    </div>`).join('');
+}
+
+function toggleTickerExpand() {
+  tickerExpanded = !tickerExpanded;
+  const exp = document.getElementById('tickerExpand');
+  const arrow = document.getElementById('tickerArrow');
+  if (tickerExpanded) {
+    renderTickerExpand(recolectarTareasPendientes());
+    exp.style.display = 'block';
+    arrow.textContent = '▴';
+  } else {
+    exp.style.display = 'none';
+    arrow.textContent = '▾';
+  }
+}
+
 function renderDashboard() {
+  renderTicker();
   const tv = pdvs.length;
   const enDeuda = pdvs.filter(p=>calcDeuda(p)>0).length;
   const td = pdvs.reduce((s,p)=>s+calcDeuda(p),0);
