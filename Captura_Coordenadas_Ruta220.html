@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Captura GPS · Ruta 220</title>
+<style>
+  :root{
+    --bg:#14110f;
+    --surface:#1f1a15;
+    --surface2:#272019;
+    --border:#382e23;
+    --amber:#c8902e;
+    --amber-soft:#7a5a26;
+    --text:#f1e8dc;
+    --muted:#a3927d;
+    --green:#5a9568;
+    --green-soft:#1c2a1d;
+    --red:#b5594a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;}
+  body{padding-bottom:90px;}
+
+  header{
+    position:sticky; top:0; z-index:10;
+    background:linear-gradient(180deg, #1a1511 0%, #15110d 100%);
+    border-bottom:1px solid var(--border);
+    padding:14px 16px 10px;
+  }
+  .brand{display:flex; align-items:baseline; gap:8px;}
+  .brand .mark{
+    width:10px;height:10px;border-radius:50%;
+    background:var(--amber); box-shadow:0 0 8px var(--amber);
+    flex-shrink:0; margin-bottom:2px;
+  }
+  h1{font-size:17px; margin:0; font-weight:700; letter-spacing:.2px;}
+  .sub{font-size:11.5px; color:var(--muted); margin-top:2px;}
+
+  .progress-wrap{margin-top:12px;}
+  .progress-row{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:5px;}
+  .progress-row b{color:var(--amber); font-weight:700;}
+  .bar{height:6px; border-radius:3px; background:var(--surface2); overflow:hidden;}
+  .bar-fill{height:100%; background:linear-gradient(90deg,var(--amber-soft),var(--amber)); width:0%; transition:width .3s;}
+
+  .tabs{display:flex; gap:6px; margin-top:12px; overflow-x:auto; padding-bottom:2px;}
+  .tab{
+    flex:1; text-align:center; padding:8px 6px; border-radius:8px;
+    background:var(--surface); border:1px solid var(--border);
+    font-size:12.5px; font-weight:600; color:var(--muted); cursor:pointer;
+    white-space:nowrap;
+  }
+  .tab.active{background:var(--amber); color:#1a1310; border-color:var(--amber);}
+  .tab .cnt{display:block; font-size:9.5px; font-weight:500; opacity:.8; margin-top:1px;}
+
+  .search-wrap{padding:10px 16px 0; display:flex; gap:8px;}
+  #search{
+    flex:1; padding:10px 12px; border-radius:9px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text); font-size:14px;
+  }
+  #search::placeholder{color:var(--muted);}
+  .btn-add{
+    flex-shrink:0; background:var(--surface2); color:var(--amber); border:1px solid var(--amber-soft);
+    border-radius:9px; padding:0 14px; font-size:13px; font-weight:700; display:flex; align-items:center; gap:5px;
+  }
+
+  .badge.custom{background:#2a2415; color:var(--amber);}
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:40;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px 16px 0 0;
+    width:100%; max-width:480px; padding:18px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+  .modal h2{margin:0 0 4px; font-size:16px;}
+  .modal .hint{font-size:12px; color:var(--muted); margin-bottom:14px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:11.5px; color:var(--muted); margin-bottom:5px; font-weight:600;}
+  .field input{
+    width:100%; padding:11px 12px; border-radius:9px; border:1px solid var(--border);
+    background:var(--surface2); color:var(--text); font-size:14px;
+  }
+  .modal-actions{display:flex; gap:10px; margin-top:6px;}
+  .modal-actions .btn-secondary{flex:1;}
+  .modal-actions .btn-capture{flex:1.4;}
+
+  main{padding:10px 12px 0;}
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:12px 13px; margin-bottom:10px;
+  }
+  .card.done{border-color:var(--green-soft); }
+  .card-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+  .pdv-name{font-size:15px; font-weight:700; line-height:1.25;}
+  .pdv-code{font-size:11px; color:var(--muted); font-weight:600; letter-spacing:.3px; margin-top:1px;}
+  .badge{
+    font-size:10px; font-weight:700; padding:3px 7px; border-radius:6px; white-space:nowrap; flex-shrink:0;
+  }
+  .badge.pending{background:#2a221a; color:var(--muted);}
+  .badge.gmaps{background:#26352a; color:#8fc59a;}
+  .badge.field{background:var(--green-soft); color:#9fd6a8;}
+
+  .coord-row{
+    margin-top:8px; font-size:12px; color:var(--muted);
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  }
+  .coord-row a{color:var(--amber); text-decoration:none; font-weight:600;}
+
+  .actions{display:flex; gap:8px; margin-top:10px;}
+  .btn{
+    flex:1; border:none; border-radius:9px; padding:11px 8px; font-size:13px; font-weight:700;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .btn-capture{background:var(--amber); color:#1a1310;}
+  .btn-capture:active{transform:scale(.97);}
+  .btn-secondary{background:var(--surface2); color:var(--text); border:1px solid var(--border);}
+  .btn-secondary.warn{color:var(--red);}
+
+  .empty{text-align:center; color:var(--muted); padding:30px 10px; font-size:13px;}
+
+  footer{
+    position:fixed; bottom:0; left:0; right:0; z-index:10;
+    background:#15110d; border-top:1px solid var(--border);
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    display:flex; gap:10px;
+  }
+  .btn-export{
+    flex:1; background:var(--surface2); color:var(--text); border:1px solid var(--border);
+    border-radius:10px; padding:12px; font-size:13px; font-weight:700;
+  }
+  .btn-export.primary{background:var(--amber); color:#1a1310; border:none;}
+
+  .toast{
+    position:fixed; top:14px; left:50%; transform:translateX(-50%);
+    background:#222; color:var(--text); padding:10px 16px; border-radius:8px;
+    font-size:13px; z-index:50; box-shadow:0 4px 14px rgba(0,0,0,.4);
+    opacity:0; transition:opacity .25s; pointer-events:none;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="mark"></span><h1>Captura GPS · Ruta 220</h1></div>
+  <div class="sub">Toca "Capturar aquí" cuando estés físicamente en el PDV</div>
+  <div class="progress-wrap">
+    <div class="progress-row"><span>Progreso total</span><span><b id="doneCount">0</b> / <span id="totalCount">0</span></span></div>
+    <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+</header>
+
+<div class="search-wrap">
+  <input id="search" type="text" placeholder="Buscar PDV o código...">
+  <button class="btn-add" id="btnAddPdv">+ PDV</button>
+</div>
+
+<main id="list"></main>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2>Agregar nuevo PDV</h2>
+    <div class="hint">Se agregará al día actual: <b id="modalDay"></b></div>
+    <div class="field">
+      <label>Nombre del PDV</label>
+      <input id="newPdvName" type="text" placeholder="Ej: Abasto El Progreso">
+    </div>
+    <div class="field">
+      <label>Código (opcional)</label>
+      <input id="newPdvCode" type="text" placeholder="Ej: 113500 — déjalo vacío si no tiene">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btnCancelAdd">Cancelar</button>
+      <button class="btn btn-capture" id="btnConfirmAdd">Agregar PDV</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <button class="btn-export" id="btnReset">Reiniciar día</button>
+  <button class="btn-export primary" id="btnExport">⬇ Exportar CSV</button>
+</footer>
+
+<script>
+const DATA = {
+  "Lunes": [
+    ["107989","Torito"],["109930","Insamar"],["111031","Roma"],["106927","Europlaza"],
+    ["109687","Wladimiro"],["111798","Primogenita"],["106947","Gabo"],["111296","Paralela"],
+    ["113167","Pica Pollo"],["110183","Feng Zheng"],["106924","Ivonne"],["111392","Paito"],
+    ["106967","Jacymar"],["112259","Parada De La Catira"],["110790","Mi Gajo"],["111995","Del Norte"],
+    ["106920","N&J"],["112392","N&J3"],["110093","Dkche"],["112656","La Fortuna"]
+  ],
+  "Martes": [
+    ["110609","Altamar"],["109370","Fg"],["111962","Superhogar"],["107040","Palacio"],
+    ["110365","Jumbo Market"],["107089","Los Cañeros"],["110091","Vesuvio"],["107644","Los Reyes"],
+    ["110105","El Robles"],["112666","Romina"],["106883","Cosme"],["111136","Los Luis"],
+    ["112083","Sabanero"],["106880","Sol Y Arena"],["111185","Taguapire"],["110364","Altos De Atamo"],
+    ["109432","Bodequero"]
+  ],
+  "Miércoles": [
+    ["107041","Reina De Las Antillas"],["111726","Hansen"],["111661","La Boutique"],
+    ["106875","Central Guacuco"],["111048","Nelam"],["106849","Solar De Jose"],
+    ["111517","Marketchef"],["107002","Miramar"],["110118","Mastro"],["107958","Palito"],
+    ["107941","Licho"],["112472","Ruth Zabaleta"],["109493","Evelin"],["110074","Robersys"],
+    ["111591","Carrero"],["110184","Arte"],["111170","Alimentos Er"]
+  ],
+  "Jueves": [
+    ["107692","Toditomarket"],["107013","Casa de la Caña"],["106986","Da Provemed"],
+    ["111796","Da Express"],["110112","Villamar"],["110109","Tavares"],["109294","Once Muchachos"],
+    ["106894","Tropicana"],["107997","D Gusto"],["112372","Bahia"],["112637","Escamas"],
+    ["107691","Lic Pampatar"],["111923","Caribeño"],["106914","El Fortin"],["107066","Cruz Elvia"],
+    ["112821","Nisier"],["111627","Comercializadora"],["112915","Agua Clara"],["110196","Proalmar"],
+    ["100167","Sigo Sambil"]
+  ],
+  "Viernes": [
+    ["100167","Sigo Ap"],["110994","Liqin"],["108059","Mi Isla"],["111032","Tita"],
+    ["107112","Gladys"],["107032","Riverca"],["107071","Sigo Costa Azul"],
+    ["100167","Sigo La Vela"],["111591","Carreros El Valle"]
+  ]
+};
+
+// Pre-cargados desde Google Maps (confirmados). key = dia|codigo|nombre
+const PRELOADED = {
+  "Martes|110365|Jumbo Market": {lat:10.9659439, lng:-63.8401982, source:"gmaps"},
+  "Viernes|107071|Sigo Costa Azul": {lat:10.9987841, lng:-63.8140631, source:"gmaps"},
+  "Viernes|100167|Sigo La Vela": {lat:10.9791865, lng:-63.8212974, source:"gmaps"},
+  "Miércoles|111517|Marketchef": {lat:11.0452031, lng:-63.8571369, source:"gmaps"},
+  "Jueves|106894|Tropicana": {lat:10.9948741, lng:-63.8029050, source:"gmaps"},
+  "Miércoles|107041|Reina De Las Antillas": {lat:11.0128155, lng:-63.8578182, source:"gmaps"},
+  "Jueves|107692|Toditomarket": {lat:10.9571297, lng:-63.8575427, source:"gmaps", verify:true}
+};
+
+const STORE_KEY = "ruta220_coords_v1";
+const CUSTOM_KEY = "ruta220_custom_pdvs_v1";
+const DAYS = Object.keys(DATA);
+let currentDay = DAYS[0];
+
+function loadCustom(){
+  try{ return JSON.parse(localStorage.getItem(CUSTOM_KEY)) || {}; }catch(e){ return {}; }
+}
+function saveCustom(c){ localStorage.setItem(CUSTOM_KEY, JSON.stringify(c)); }
+
+function itemsForDay(day){
+  const custom = loadCustom()[day] || [];
+  return DATA[day].concat(custom.map(c=>[c.code, c.name, true]));
+}
+
+function isCustomCode(code){ return code.startsWith("NEW-"); }
+
+function addCustomPdv(day, name, code){
+  if(!code){ code = "NEW-"+Date.now(); }
+  const custom = loadCustom();
+  if(!custom[day]) custom[day] = [];
+  custom[day].push({code, name});
+  saveCustom(custom);
+}
+
+function removeCustomPdv(day, code, name){
+  const custom = loadCustom();
+  if(custom[day]){
+    custom[day] = custom[day].filter(c => !(c.code===code && c.name===name));
+    saveCustom(custom);
+  }
+  const store = loadStore();
+  delete store[keyFor(day,code,name)];
+  saveStore(store);
+}
+
+function loadStore(){
+  try{ return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; }catch(e){ return {}; }
+}
+function saveStore(s){ localStorage.setItem(STORE_KEY, JSON.stringify(s)); }
+
+function ensureSeeded(){
+  let store = loadStore();
+  let changed = false;
+  for(const k in PRELOADED){
+    if(!store[k]){ store[k] = PRELOADED[k]; changed = true; }
+  }
+  if(changed) saveStore(store);
+}
+ensureSeeded();
+
+function keyFor(day, code, name){ return day+"|"+code+"|"+name; }
+
+function totalCounts(){
+  let total=0, done=0;
+  const store = loadStore();
+  for(const day of DAYS){
+    for(const [code,name] of itemsForDay(day)){
+      total++;
+      if(store[keyFor(day,code,name)]) done++;
+    }
+  }
+  return {total, done};
+}
+
+function renderTabs(){
+  const tabsEl = document.getElementById("tabs");
+  tabsEl.innerHTML = "";
+  const store = loadStore();
+  DAYS.forEach(day=>{
+    const items = itemsForDay(day);
+    const doneN = items.filter(([c,n])=>store[keyFor(day,c,n)]).length;
+    const tab = document.createElement("div");
+    tab.className = "tab" + (day===currentDay ? " active" : "");
+    tab.innerHTML = day+"<span class='cnt'>"+doneN+"/"+items.length+"</span>";
+    tab.onclick = ()=>{ currentDay = day; renderAll(); };
+    tabsEl.appendChild(tab);
+  });
+}
+
+function renderProgress(){
+  const {total, done} = totalCounts();
+  document.getElementById("doneCount").textContent = done;
+  document.getElementById("totalCount").textContent = total;
+  document.getElementById("barFill").style.width = (total? (done/total*100):0)+"%";
+}
+
+function mapsLink(lat,lng){ return "https://maps.google.com/?q="+lat+","+lng; }
+
+function renderList(){
+  const listEl = document.getElementById("list");
+  const store = loadStore();
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  listEl.innerHTML = "";
+
+  let items = itemsForDay(currentDay);
+  if(q){
+    items = items.filter(([code,name]) => (name.toLowerCase().includes(q) || code.includes(q)));
+  }
+
+  if(items.length===0){
+    listEl.innerHTML = "<div class='empty'>Sin resultados para esa búsqueda.</div>";
+    return;
+  }
+
+  items.forEach(([code,name,isCustom])=>{
+    const k = keyFor(currentDay, code, name);
+    const entry = store[k];
+    const card = document.createElement("div");
+    card.className = "card" + (entry ? " done":"");
+
+    let badge = "<span class='badge pending'>Sin coordenada</span>";
+    if(entry && entry.source==="gmaps") badge = "<span class='badge gmaps'>📍 Google Maps</span>";
+    else if(entry) badge = "<span class='badge field'>✓ Capturado en campo</span>";
+    if(isCustom) badge += " <span class='badge custom'>＋ Nuevo</span>";
+
+    let coordHtml = "";
+    if(entry){
+      coordHtml = "<div class='coord-row'>"+entry.lat.toFixed(6)+", "+entry.lng.toFixed(6)+
+        (entry.accuracy ? " · ±"+Math.round(entry.accuracy)+"m" : "") +
+        " · <a href='"+mapsLink(entry.lat,entry.lng)+"' target='_blank'>Ver en Maps ↗</a></div>";
+      if(entry.verify){
+        coordHtml += "<div class='coord-row' style='color:var(--red)'>⚠ Verificar nombre/ubicación al pasar por aquí</div>";
+      }
+    }
+
+    card.innerHTML = `
+      <div class="card-top">
+        <div>
+          <div class="pdv-name">${name}</div>
+          <div class="pdv-code">${isCustomCode(code) ? "sin código" : code}</div>
+        </div>
+        ${badge}
+      </div>
+      ${coordHtml}
+      <div class="actions">
+        <button class="btn btn-capture" data-action="capture">📍 ${entry ? "Recapturar" : "Capturar aquí"}</button>
+        ${entry && !isCustom ? "<button class='btn btn-secondary warn' data-action='clear'>Borrar</button>" : ""}
+        ${isCustom ? "<button class='btn btn-secondary warn' data-action='delete-pdv'>Eliminar PDV</button>" : ""}
+      </div>
+    `;
+
+    card.querySelector("[data-action='capture']").onclick = ()=>captureGPS(code,name);
+    const clearBtn = card.querySelector("[data-action='clear']");
+    if(clearBtn) clearBtn.onclick = ()=>clearCoord(code,name);
+    const delBtn = card.querySelector("[data-action='delete-pdv']");
+    if(delBtn) delBtn.onclick = ()=>{
+      if(confirm("¿Eliminar \""+name+"\" de la ruta de "+currentDay+"?")){
+        removeCustomPdv(currentDay, code, name);
+        renderAll();
+      }
+    };
+
+    listEl.appendChild(card);
+  });
+}
+
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 2200);
+}
+
+function captureGPS(code,name){
+  if(!navigator.geolocation){
+    showToast("Este dispositivo no soporta GPS en el navegador");
+    return;
+  }
+  showToast("Obteniendo ubicación...");
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const store = loadStore();
+    store[keyFor(currentDay,code,name)] = {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy,
+      source: "campo",
+      capturedAt: new Date().toISOString()
+    };
+    saveStore(store);
+    showToast("✓ Coordenada guardada para "+name);
+    renderAll();
+  }, err=>{
+    showToast("No se pudo obtener GPS: "+err.message);
+  }, { enableHighAccuracy:true, timeout:15000, maximumAge:0 });
+}
+
+function clearCoord(code,name){
+  const store = loadStore();
+  delete store[keyFor(currentDay,code,name)];
+  saveStore(store);
+  renderAll();
+}
+
+function exportCSV(){
+  const store = loadStore();
+  let rows = [["dia","codigo","nombre","latitud","longitud","precision_m","fuente","fecha_captura","maps_url"]];
+  for(const day of DAYS){
+    for(const [code,name] of itemsForDay(day)){
+      const e = store[keyFor(day,code,name)];
+      const codeOut = isCustomCode(code) ? "" : code;
+      if(e){
+        rows.push([day, codeOut, name, e.lat, e.lng, e.accuracy ? Math.round(e.accuracy):"", e.source, e.capturedAt||"", mapsLink(e.lat,e.lng)]);
+      } else {
+        rows.push([day, codeOut, name, "", "", "", "", "", ""]);
+      }
+    }
+  }
+  const csv = rows.map(r=>r.map(v=>{
+    v = String(v);
+    return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+  }).join(",")).join("\n");
+
+  const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "Coordenadas_Ruta220_"+new Date().toISOString().slice(0,10)+".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function resetDay(){
+  if(!confirm("¿Borrar todas las coordenadas capturadas en campo de "+currentDay+"? (Los puntos de Google Maps no se borran)")) return;
+  const store = loadStore();
+  itemsForDay(currentDay).forEach(([code,name])=>{
+    const k = keyFor(currentDay,code,name);
+    if(store[k] && store[k].source==="campo") delete store[k];
+  });
+  saveStore(store);
+  renderAll();
+}
+
+function renderAll(){
+  renderTabs();
+  renderProgress();
+  renderList();
+}
+
+document.getElementById("search").addEventListener("input", renderList);
+document.getElementById("btnExport").addEventListener("click", exportCSV);
+document.getElementById("btnReset").addEventListener("click", resetDay);
+
+const modalOverlay = document.getElementById("modalOverlay");
+function openModal(){
+  document.getElementById("modalDay").textContent = currentDay;
+  document.getElementById("newPdvName").value = "";
+  document.getElementById("newPdvCode").value = "";
+  modalOverlay.classList.add("show");
+  setTimeout(()=>document.getElementById("newPdvName").focus(), 50);
+}
+function closeModal(){ modalOverlay.classList.remove("show"); }
+
+document.getElementById("btnAddPdv").addEventListener("click", openModal);
+document.getElementById("btnCancelAdd").addEventListener("click", closeModal);
+modalOverlay.addEventListener("click", (e)=>{ if(e.target===modalOverlay) closeModal(); });
+
+document.getElementById("btnConfirmAdd").addEventListener("click", ()=>{
+  const name = document.getElementById("newPdvName").value.trim();
+  const code = document.getElementById("newPdvCode").value.trim();
+  if(!name){ showToast("Escribe al menos el nombre del PDV"); return; }
+  addCustomPdv(currentDay, name, code);
+  closeModal();
+  showToast("✓ "+name+" agregado a "+currentDay);
+  renderAll();
+});
+
+renderAll();
+</script>
+</body>
+</html>
