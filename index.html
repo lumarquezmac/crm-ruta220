@@ -1081,6 +1081,7 @@ html, body {
             <button class="btn btn-ghost" onclick="abrirModalPDFColumnas()" title="Descargar estado de cuenta PDF">🖨️ PDF</button>
             <button class="btn btn-ghost" onclick="abrirModalPago()">💰 Registrar pago</button>
             <button class="btn btn-ghost" onclick="abrirModalSaldoFavor()">⭐ Saldo a favor</button>
+            <button class="btn btn-ghost" onclick="abrirModalCruceSaldoFavor()">🔁 Cruzar saldo</button>
             <button class="btn btn-primary" onclick="openModal('modalFactura')">📄 Nueva factura</button>
           </div>
         </div>
@@ -1178,6 +1179,15 @@ html, body {
         </div>
         <div class="form-group"><label>Portafolio activo</label>
           <select id="nPortafolio"><option>RONES + UPA</option><option>Solo RONES</option><option>Solo UPA</option></select>
+        </div>
+        <div class="form-group full">
+          <label>DPP (Descuento por Pago Pronto)</label>
+          <select id="nDpp">
+            <option value="ninguno">Ninguno</option>
+            <option value="ka">DPP KA (Cuentas Claves)</option>
+            <option value="tra">DPP Tra (Tradicional)</option>
+          </select>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:3px">KA: -8% a 14 días, -6% a 20 días, -4% a 29 días. Tra: -8% a 5 días, -6% a 12 días.</div>
         </div>
         <div class="form-group"><label>Crédito disponible ($)</label><input type="number" id="nCredito" placeholder="0"></div>
         <div class="form-group"><label>Frecuencia de visita</label>
@@ -1323,6 +1333,8 @@ html, body {
           </select>
         </div>
         <div class="form-group"><label>Fecha vencimiento</label><input type="text" id="facVence" placeholder="2025-06-21"></div>
+        <div class="form-group"><label>Fecha de Recepción</label><input type="text" id="facFechaRecepcion" placeholder="2025-06-14"></div>
+        <div class="form-group full" style="margin-top:-8px"><div style="font-size:10px;color:var(--text-muted)">📌 A partir de esta fecha se cuentan los días para el descuento DPP (si el PDV lo tiene activado).</div></div>
         <div class="form-group full"><label>Descripción / Concepto</label>
           <textarea id="facDesc" placeholder="Ej: Pedido P001 – 6x ST 1796 + 12x Grant's..." style="min-height:55px"></textarea>
         </div>
@@ -1402,6 +1414,15 @@ html, body {
         </div>
         <div class="form-group"><label>Portafolio activo</label>
           <select id="ePortafolio"><option>RONES + UPA</option><option>Solo RONES</option><option>Solo UPA</option></select>
+        </div>
+        <div class="form-group full">
+          <label>DPP (Descuento por Pago Pronto)</label>
+          <select id="eDpp">
+            <option value="ninguno">Ninguno</option>
+            <option value="ka">DPP KA (Cuentas Claves)</option>
+            <option value="tra">DPP Tra (Tradicional)</option>
+          </select>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:3px">KA: -8% a 14 días, -6% a 20 días, -4% a 29 días. Tra: -8% a 5 días, -6% a 12 días.</div>
         </div>
         <div class="form-group"><label>Crédito disponible ($)</label><input type="number" id="eCredito" min="0"></div>
         <div class="form-group"><label>Frecuencia de visita</label>
@@ -1602,6 +1623,37 @@ html, body {
   </div>
 </div>
 
+<!-- MODAL: Cruzar Saldo a Favor con Facturas -->
+<div class="modal-overlay" id="modalCruceSaldoFavor">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">🔁 Cruzar Saldo a Favor</span>
+      <button class="modal-close" onclick="closeModal('modalCruceSaldoFavor')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="cruceSaldoDisponible" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:var(--text-muted)">⭐ Saldo a favor disponible</span>
+        <span id="cruceSaldoMonto" style="font-size:18px;font-weight:700;color:var(--blue)">$0.00</span>
+      </div>
+
+      <div class="form-group full" style="margin-bottom:12px">
+        <label>Facturas a cubrir con este saldo</label>
+        <div id="cruceFacturasList" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--surface)"></div>
+        <div id="cruceResumen" style="font-size:11px;color:var(--text-muted);margin-top:6px"></div>
+      </div>
+
+      <div class="form-group full">
+        <label>Nota (opcional)</label>
+        <textarea id="cruceNota" placeholder="Ej: aplicado a facturas de mayo..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalCruceSaldoFavor')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarCruceSaldoFavor()">🔁 Aplicar cruce</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Detalle de Factura -->
 <div class="modal-overlay" id="modalDetalleFactura">
   <div class="modal" style="max-width:480px">
@@ -1651,6 +1703,10 @@ html, body {
         <div class="form-group">
           <label>Vence</label>
           <input type="date" id="editFacVence">
+        </div>
+        <div class="form-group">
+          <label>Fecha de Recepción</label>
+          <input type="date" id="editFacFechaRecepcion">
         </div>
         <div class="form-group full">
           <label>Descripción</label>
@@ -1846,7 +1902,7 @@ async function cargarPDVs() {
       credito: parseFloat(p.credito) || 0,
       tasks:      (tasks      || []).filter(x => x.pdv_id === p.id),
       pedidos:    (pedidos    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, items: x.items || [], total: parseFloat(x.total)||0})),
-      facturas:   (facturas   || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, saldo: parseFloat(x.saldo)||0, pagosAplicados: x.pagos_aplicados||[]})),
+      facturas:   (facturas   || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, saldo: parseFloat(x.saldo)||0, pagosAplicados: x.pagos_aplicados||[], fechaRecepcion: x.fecha_recepcion||x.fecha})),
       pagos:      (pagos      || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id, facturasAplicadas: x.facturas_aplicadas||null})),
       chat:       (mensajes   || []).filter(x => x.pdv_id === p.id),
       saldoFavor: (saldoFavor || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0})),
@@ -1899,7 +1955,7 @@ async function savePDV(p) {
     rif: p.rif||'', dir: p.dir||'', portafolio: p.portafolio,
     lat: p.lat||'', lng: p.lng||'',
     credito: p.credito||0, frecuencia: p.frecuencia,
-    notas: p.notas||'', status: p.status, zona: p.zona||''
+    notas: p.notas||'', status: p.status, zona: p.zona||'', dpp: p.dpp||'ninguno'
   };
   const { data, error } = await sb.from('pdvs').upsert(row, { onConflict: 'id' }).select();
   if (error) {
@@ -1946,6 +2002,7 @@ async function saveFactura(pdvId, f) {
     monto: f.monto, saldo: f.saldo, moneda: f.moneda,
     condicion: f.condicion, fecha: f.fecha,
     vence: f.vence||null, descripcion: f.descripcion||'',
+    fecha_recepcion: f.fechaRecepcion||f.fecha,
     estado: f.estado, pagos_aplicados: f.pagosAplicados||[]
   }, { onConflict: 'id' });
   if (error) {
@@ -1958,8 +2015,12 @@ async function saveFactura(pdvId, f) {
 
 async function updateFacturaRemote(f) {
   const { error } = await sb.from('facturas').update({
-    saldo: f.saldo, estado: f.estado,
-    pagos_aplicados: f.pagosAplicados||[]
+    nro: f.nro, monto: f.monto, saldo: f.saldo,
+    moneda: f.moneda, condicion: f.condicion,
+    fecha: f.fecha, vence: f.vence||null,
+    fecha_recepcion: f.fechaRecepcion||f.fecha,
+    descripcion: f.descripcion||'',
+    estado: f.estado, pagos_aplicados: f.pagosAplicados||[]
   }).eq('id', f.id);
   if (error) {
     console.error('Update factura error:', JSON.stringify(error));
@@ -2362,6 +2423,36 @@ function filterByStatus(el, status) {
   renderPDVList(document.getElementById('searchPDV').value, status);
 }
 
+// ══════════════════════════════════════════
+//  DPP — Descuento por Pago Pronto
+// ══════════════════════════════════════════
+const DPP_TABLAS = {
+  ka:  [ {dias:14, pct:8}, {dias:20, pct:6}, {dias:29, pct:4} ],
+  tra: [ {dias:5,  pct:8}, {dias:12, pct:6} ],
+};
+
+function calcDppVigente(pdv, factura) {
+  if (!pdv || !pdv.dpp || pdv.dpp === 'ninguno') return null;
+  const tabla = DPP_TABLAS[pdv.dpp];
+  if (!tabla) return null;
+
+  const fechaBase = factura.fechaRecepcion || factura.fecha;
+  if (!fechaBase) return null;
+
+  const dias = Math.floor((new Date() - new Date(fechaBase)) / 86400000);
+  if (dias < 0) return null;
+
+  // Buscar el primer escalón cuyo límite de días aún no se superó
+  for (const escalon of tabla) {
+    if (dias <= escalon.dias) {
+      return { pct: escalon.pct, diasLimite: escalon.dias, diasTranscurridos: dias, vigente: true };
+    }
+  }
+  // Ya pasó el último escalón
+  const ultimo = tabla[tabla.length-1];
+  return { pct: 0, diasLimite: ultimo.dias, diasTranscurridos: dias, vigente: false };
+}
+
 function calcDeuda(p) {
   // Si tiene facturas, usar saldo de facturas pendientes
   if ((p.facturas||[]).length > 0) {
@@ -2657,7 +2748,10 @@ function renderCobranza() {
     </div>
     ${!facturas.length
       ? `<div class="empty-state" style="padding:20px"><div class="empty-state-icon">📄</div><div class="empty-state-text">Sin facturas registradas.<br>Usa "Nueva factura" para agregar.</div></div>`
-      : ordenarFacturas([...facturas], ordenFacturasActual).map(f=>`
+      : ordenarFacturas([...facturas], ordenFacturasActual).map(f=>{
+          const dpp = f.estado!=='pagada' ? calcDppVigente(activePDV, f) : null;
+          const dppLabel = activePDV.dpp === 'ka' ? 'DPP KA' : activePDV.dpp === 'tra' ? 'DPP Tra' : '';
+          return `
         <div class="order-card" style="margin-bottom:8px">
           <div class="order-header">
             <div>
@@ -2671,12 +2765,22 @@ function renderCobranza() {
             </div>
           </div>
           ${f.descripcion?`<div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">${f.descripcion}</div>`:''}
+          ${dpp ? `
+          <div style="display:flex;align-items:center;gap:7px;font-size:11px;padding:5px 8px;border-radius:6px;margin-bottom:6px;background:${dpp.vigente?'rgba(61,170,110,.12)':'rgba(192,64,64,.10)'};border:1px solid ${dpp.vigente?'var(--green)':'var(--border)'}">
+            <span>${dpp.vigente?'⏳':'⛔'}</span>
+            <span style="color:${dpp.vigente?'var(--green)':'var(--text-muted)'}">
+              ${dpp.vigente
+                ? `<strong>${dppLabel}: -${dpp.pct}% vigente</strong> (recibida hace ${dpp.diasTranscurridos} día${dpp.diasTranscurridos!==1?'s':''} · vence el descuento a los ${dpp.diasLimite} días) → paga $${(f.saldo*(1-dpp.pct/100)).toFixed(2)} en vez de $${f.saldo.toFixed(2)}`
+                : `${dppLabel}: descuento vencido (recibida hace ${dpp.diasTranscurridos} días, límite era ${dpp.diasLimite} días)`}
+            </span>
+          </div>` : ''}
           <div style="display:flex;justify-content:space-between;font-size:12px;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
             <span style="color:var(--text-muted)">Monto: <strong style="color:var(--text)">${f.moneda} ${f.monto.toFixed(2)}</strong></span>
             <span style="color:var(--text-muted)">Abonado: <strong style="color:var(--green)">$${(f.monto-f.saldo).toFixed(2)}</strong></span>
             <span style="color:var(--text-muted)">Saldo: <strong style="color:${f.saldo>0?'var(--red)':'var(--green)'}">$${f.saldo.toFixed(2)}</strong></span>
           </div>
-        </div>`).join('')}
+        </div>`;
+        }).join('')}
 
     <!-- Pagos recibidos -->
     <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px">💰 Pagos recibidos</div>
@@ -2923,6 +3027,7 @@ async function crearPDV() {
     lng:document.getElementById('nLng').value.trim(),
     tipo:document.getElementById('nTipo').value,
     zona:document.getElementById('nZona').value,
+    dpp:document.getElementById('nDpp').value,
     portafolio:document.getElementById('nPortafolio').value,
     credito:parseFloat(document.getElementById('nCredito').value)||0,
     frecuencia:document.getElementById('nFrecuencia').value,
@@ -2954,6 +3059,7 @@ function abrirEditPDV() {
   const setSelect = (id, val) => { const s=document.getElementById(id); for(let o of s.options){if(o.value===val||o.text===val){s.value=o.value;break;}} };
   setSelect('eTipo', activePDV.tipo);
   setSelect('eZona', activePDV.zona||'');
+  setSelect('eDpp', activePDV.dpp||'ninguno');
   setSelect('ePortafolio', activePDV.portafolio);
   setSelect('eFrecuencia', activePDV.frecuencia);
   setSelect('eStatus', activePDV.status);
@@ -2972,6 +3078,7 @@ async function guardarEditPDV() {
   activePDV.lng        = document.getElementById('eLng').value.trim();
   activePDV.tipo       = document.getElementById('eTipo').value;
   activePDV.zona       = document.getElementById('eZona').value;
+  activePDV.dpp        = document.getElementById('eDpp').value;
   activePDV.portafolio = document.getElementById('ePortafolio').value;
   activePDV.credito    = parseFloat(document.getElementById('eCredito').value)||0;
   activePDV.frecuencia = document.getElementById('eFrecuencia').value;
@@ -3065,6 +3172,7 @@ async function guardarFactura() {
     moneda: document.getElementById('facMoneda').value,
     condicion: document.getElementById('facCondicion').value,
     fecha, vence: document.getElementById('facVence').value.trim()||null,
+    fechaRecepcion: document.getElementById('facFechaRecepcion').value.trim()||fecha,
     descripcion: document.getElementById('facDesc').value.trim(),
     estado: 'pendiente',
     pagosAplicados: []
@@ -3082,7 +3190,7 @@ async function guardarFactura() {
   renderDashboard(); renderRightPanel();
   logActivity('cobro', `Factura ${nro} ($${monto.toFixed(2)}) → <strong>${activePDV.nombre}</strong>`);
   showToast(`Factura ${nro} registrada ✓`);
-  ['facNro','facFecha','facMonto','facVence','facDesc'].forEach(id=>document.getElementById(id).value='');
+  ['facNro','facFecha','facMonto','facVence','facFechaRecepcion','facDesc'].forEach(id=>document.getElementById(id).value='');
 }
 
 function abrirModalPago() {
@@ -3314,14 +3422,28 @@ function abrirDetalleFactura(facId) {
   const pagosFactura = (activePDV.pagos||[]).filter(p => p.facturaId === facId);
   const abonado = f.monto - f.saldo;
 
+  const dpp = f.estado!=='pagada' ? calcDppVigente(activePDV, f) : null;
+  const dppLabel = activePDV.dpp === 'ka' ? 'DPP KA' : activePDV.dpp === 'tra' ? 'DPP Tra' : '';
+
   document.getElementById('detalleFacturaBody').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
       <div>
         <div style="font-size:17px;font-weight:700;color:var(--text)">${f.nro}</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Emitida ${f.fecha} · Vence ${f.vence||'—'}</div>
+        ${f.fechaRecepcion ? `<div style="font-size:12px;color:var(--text-muted);margin-top:1px">📌 Recibida ${f.fechaRecepcion}</div>` : ''}
       </div>
       <span class="tag ${eTag[f.estado]||'tag-amber'}">${eLabel[f.estado]||f.estado}</span>
     </div>
+
+    ${dpp ? `
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:10px 12px;border-radius:8px;margin-bottom:14px;background:${dpp.vigente?'rgba(61,170,110,.12)':'rgba(192,64,64,.10)'};border:1px solid ${dpp.vigente?'var(--green)':'var(--border)'}">
+      <span style="font-size:16px">${dpp.vigente?'⏳':'⛔'}</span>
+      <span style="color:${dpp.vigente?'var(--green)':'var(--text-muted)'}">
+        ${dpp.vigente
+          ? `<strong>${dppLabel}: -${dpp.pct}% vigente</strong><br>Recibida hace ${dpp.diasTranscurridos} día${dpp.diasTranscurridos!==1?'s':''} · descuento vence a los ${dpp.diasLimite} días<br>Pagando hoy: <strong>$${(f.saldo*(1-dpp.pct/100)).toFixed(2)}</strong> en vez de $${f.saldo.toFixed(2)}`
+          : `${dppLabel}: descuento vencido<br>Recibida hace ${dpp.diasTranscurridos} días (límite era ${dpp.diasLimite} días)`}
+      </span>
+    </div>` : ''}
 
     ${f.descripcion ? `<div style="font-size:13px;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px">${f.descripcion}</div>` : ''}
 
@@ -3369,6 +3491,7 @@ function abrirEditarFactura(facId) {
   document.getElementById('editFacMonto').value   = f.monto;
   document.getElementById('editFacFecha').value   = f.fecha;
   document.getElementById('editFacVence').value   = f.vence||'';
+  document.getElementById('editFacFechaRecepcion').value = f.fechaRecepcion||'';
   document.getElementById('editFacDesc').value    = f.descripcion||'';
   const setSelect = (id, val) => {
     const s = document.getElementById(id);
@@ -3400,6 +3523,7 @@ async function guardarEditarFactura() {
   fac.condicion   = document.getElementById('editFacCondicion').value;
   fac.fecha       = document.getElementById('editFacFecha').value || fac.fecha;
   fac.vence       = document.getElementById('editFacVence').value || null;
+  fac.fechaRecepcion = document.getElementById('editFacFechaRecepcion').value || fac.fecha;
   fac.descripcion = document.getElementById('editFacDesc').value.trim();
   fac.estado = fac.saldo <= 0 ? 'pagada' : fac.saldo < fac.monto ? 'parcial'
              : (fac.vence && fac.vence < new Date().toISOString().split('T')[0]) ? 'vencida' : 'pendiente';
@@ -3670,6 +3794,127 @@ async function eliminarSaldoFavor(id) {
   renderRightPanel(); renderDashboard();
   logActivity('cobro', `Saldo a favor eliminado ← <strong>${activePDV.nombre}</strong>`);
   showToast('Movimiento eliminado ✓');
+}
+
+// ══════════════════════════════════════════
+//  CRUZAR SALDO A FAVOR CON FACTURAS
+// ══════════════════════════════════════════
+function calcSaldoFavorDisponible(p) {
+  return (p.saldoFavor||[]).reduce((s,m)=>s+m.monto,0);
+}
+
+function abrirModalCruceSaldoFavor() {
+  if (!activePDV) return;
+  const disponible = calcSaldoFavorDisponible(activePDV);
+
+  if (disponible <= 0) {
+    showToast('Este PDV no tiene saldo a favor disponible para cruzar', true);
+    return;
+  }
+
+  document.getElementById('cruceSaldoMonto').textContent = `$${disponible.toFixed(2)}`;
+  document.getElementById('cruceNota').value = '';
+
+  const pendientes = (activePDV.facturas||[]).filter(f=>f.estado!=='pagada').sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+  const cont = document.getElementById('cruceFacturasList');
+
+  if (!pendientes.length) {
+    cont.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:6px">Este PDV no tiene facturas pendientes por cubrir.</div>`;
+    document.getElementById('cruceResumen').textContent = '';
+    openModal('modalCruceSaldoFavor');
+    return;
+  }
+
+  cont.innerHTML = pendientes.map(f => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:6px 4px;border-bottom:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" class="cruce-fac-check" value="${f.id}" data-saldo="${f.saldo}" onchange="actualizarResumenCruce()" style="accent-color:var(--blue);width:15px;height:15px;flex-shrink:0">
+      <span style="flex:1">${f.nro} <span style="color:var(--text-muted)">· ${f.fecha}${f.vence?' · vence '+f.vence:''}</span></span>
+      <strong style="color:var(--red)">$${f.saldo.toFixed(2)}</strong>
+    </label>`).join('');
+
+  actualizarResumenCruce();
+  openModal('modalCruceSaldoFavor');
+}
+
+function actualizarResumenCruce() {
+  if (!activePDV) return;
+  const disponible = calcSaldoFavorDisponible(activePDV);
+  const checks = Array.from(document.querySelectorAll('.cruce-fac-check:checked'));
+  const totalSeleccionado = checks.reduce((s,c)=>s+parseFloat(c.dataset.saldo),0);
+  const resumen = document.getElementById('cruceResumen');
+
+  if (!checks.length) {
+    resumen.textContent = 'Selecciona al menos una factura para cruzar.';
+    return;
+  }
+
+  const aplicable = Math.min(disponible, totalSeleccionado);
+  const excede = totalSeleccionado > disponible;
+
+  resumen.innerHTML = `${checks.length} factura${checks.length!==1?'s':''} · Saldo de facturas: $${totalSeleccionado.toFixed(2)} · `
+    + (excede
+        ? `<strong style="color:var(--amber-lt)">se cubrirán $${aplicable.toFixed(2)} (no alcanza para todo, quedará pendiente)</strong>`
+        : `<strong style="color:var(--green)">se cubre completo, sobrarían $${(disponible-totalSeleccionado).toFixed(2)} de saldo</strong>`);
+}
+
+async function confirmarCruceSaldoFavor() {
+  if (!activePDV) return;
+  const disponible = calcSaldoFavorDisponible(activePDV);
+  const checks = Array.from(document.querySelectorAll('.cruce-fac-check:checked'));
+
+  if (!checks.length) { showToast('Selecciona al menos una factura', true); return; }
+  if (disponible <= 0) { showToast('No hay saldo a favor disponible', true); return; }
+
+  const facIds = checks.map(c=>c.value);
+  const nota = document.getElementById('cruceNota').value.trim();
+
+  let restante = disponible;
+  const facturasAfectadas = [];
+
+  showLoading('Aplicando cruce…');
+
+  for (const facId of facIds) {
+    if (restante <= 0) break;
+    const fac = activePDV.facturas.find(f=>f.id===facId);
+    if (!fac) continue;
+    const aplicado = Math.min(fac.saldo, restante);
+    fac.saldo = Math.max(0, fac.saldo - aplicado);
+    fac.estado = fac.saldo <= 0 ? 'pagada' : 'parcial';
+    restante -= aplicado;
+    facturasAfectadas.push({ fac, aplicado });
+  }
+
+  const totalAplicado = disponible - restante;
+  if (totalAplicado <= 0) {
+    hideLoading();
+    showToast('No se aplicó ningún monto', true);
+    return;
+  }
+
+  for (const { fac } of facturasAfectadas) {
+    await updateFacturaRemote(fac);
+  }
+
+  // Registrar el movimiento de "uso" de saldo a favor
+  if (!activePDV.saldoFavor) activePDV.saldoFavor = [];
+  const mov = {
+    id: 'SF' + Date.now(),
+    fecha: new Date().toISOString().split('T')[0],
+    tipo: 'uso',
+    monto: -totalAplicado,
+    nota: nota || `Cruzado con ${facturasAfectadas.length} factura${facturasAfectadas.length!==1?'s':''}: ${facturasAfectadas.map(x=>x.fac.nro).join(', ')}`
+  };
+  activePDV.saldoFavor.push(mov);
+  await saveSaldoFavorRemote(activePDV.id, mov);
+
+  actualizarStatusPDV();
+  await savePDV(activePDV);
+  hideLoading();
+  closeModal('modalCruceSaldoFavor');
+  selectPDV(activePDV.id);
+  renderRightPanel(); renderDashboard();
+  logActivity('cobro', `Saldo a favor cruzado $${totalAplicado.toFixed(2)} → ${facturasAfectadas.length} factura(s) · <strong>${activePDV.nombre}</strong>`);
+  showToast(`Cruce aplicado: $${totalAplicado.toFixed(2)} ✓${restante<disponible-totalAplicado?'':''}`);
 }
 
 function actualizarStatusPDV() {
