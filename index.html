@@ -1344,13 +1344,12 @@ html, body {
     </div>
     <div class="modal-body">
       <div class="form-group full" style="margin-bottom:12px">
-        <label>Factura que cancela (opcional)</label>
-        <select id="pagoFacturaId">
-          <option value="">— Pago sin factura específica —</option>
-        </select>
+        <label>Facturas a cancelar (opcional, puedes marcar varias)</label>
+        <div id="pagoFacturasList" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--surface)"></div>
+        <div id="pagoFacturasResumen" style="font-size:11px;color:var(--text-muted);margin-top:6px"></div>
       </div>
       <div class="form-grid">
-        <div class="form-group"><label>Monto pagado *</label><input type="number" id="pagoMonto" placeholder="0.00" min="0" step="0.01"></div>
+        <div class="form-group"><label>Monto pagado *</label><input type="number" id="pagoMonto" placeholder="0.00" min="0" step="0.01" oninput="this.dataset.editadoManual='1'"></div>
         <div class="form-group"><label>Moneda</label><select id="pagoMoneda"><option>USD</option><option>Bs.</option></select></div>
         <div class="form-group"><label>Método de pago</label>
           <select id="pagoMetodo">
@@ -1848,7 +1847,7 @@ async function cargarPDVs() {
       tasks:      (tasks      || []).filter(x => x.pdv_id === p.id),
       pedidos:    (pedidos    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, items: x.items || [], total: parseFloat(x.total)||0})),
       facturas:   (facturas   || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, saldo: parseFloat(x.saldo)||0, pagosAplicados: x.pagos_aplicados||[]})),
-      pagos:      (pagos      || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id})),
+      pagos:      (pagos      || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id, facturasAplicadas: x.facturas_aplicadas||null})),
       chat:       (mensajes   || []).filter(x => x.pdv_id === p.id),
       saldoFavor: (saldoFavor || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0})),
     }));
@@ -1976,7 +1975,8 @@ async function savePago(pdvId, p) {
     id: p.id, pdv_id: pdvId, fecha: p.fecha,
     monto: p.monto, moneda: p.moneda,
     metodo: p.metodo, ref: p.ref||'',
-    nota: p.nota||'', factura_id: p.facturaId||null
+    nota: p.nota||'', factura_id: p.facturaId||null,
+    facturas_aplicadas: p.facturasAplicadas || null
   }, { onConflict: 'id' });
   if (error) {
     console.error('Pago error:', JSON.stringify(error));
@@ -2687,7 +2687,7 @@ function renderCobranza() {
           <div class="order-header">
             <div>
               <div class="order-id">${p.id}</div>
-              <div class="order-date">${p.fecha} · ${p.metodo}${p.facturaId?' · Fact. '+p.facturaId:''}</div>
+              <div class="order-date">${p.fecha} · ${p.metodo}${p.facturaId?' · Fact. '+p.facturaId:''}${p.facturasAplicadas&&p.facturasAplicadas.length>1?` · ${p.facturasAplicadas.length} facturas`:''}</div>
             </div>
             <div style="display:flex;gap:5px;align-items:center">
               <span class="tag tag-green">Recibido</span>
@@ -3087,30 +3087,64 @@ async function guardarFactura() {
 
 function abrirModalPago() {
   if (!activePDV) return;
-  poblarSelectFacturas();
+  poblarListaFacturasPago();
   openModal('modalPago');
 }
 
 function abrirModalPagoConFactura(facId) {
-  poblarSelectFacturas(facId);
-  // Pre-llenar monto con saldo de la factura
-  const fac = (activePDV.facturas||[]).find(f=>f.id===facId);
-  if (fac) document.getElementById('pagoMonto').value = fac.saldo.toFixed(2);
+  poblarListaFacturasPago([facId]);
   openModal('modalPago');
 }
 
-function poblarSelectFacturas(preselect='') {
-  const sel = document.getElementById('pagoFacturaId');
-  const pendientes = (activePDV.facturas||[]).filter(f=>f.estado!=='pagada');
-  sel.innerHTML = `<option value="">— Pago general / sin factura específica —</option>`
-    + pendientes.map(f=>`<option value="${f.id}" ${f.id===preselect?'selected':''}>${f.nro} · Saldo $${f.saldo.toFixed(2)} (${f.estado})</option>`).join('');
+function poblarListaFacturasPago(preselect=[]) {
+  delete document.getElementById('pagoMonto').dataset.editadoManual;
+  const cont = document.getElementById('pagoFacturasList');
+  const pendientes = (activePDV.facturas||[]).filter(f=>f.estado!=='pagada').sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+
+  if (!pendientes.length) {
+    cont.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:6px">Este PDV no tiene facturas pendientes. El pago se registrará sin asociar a ninguna factura.</div>`;
+    document.getElementById('pagoFacturasResumen').textContent = '';
+    return;
+  }
+
+  cont.innerHTML = pendientes.map(f => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:6px 4px;border-bottom:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" class="pago-fac-check" value="${f.id}" data-saldo="${f.saldo}" ${preselect.includes(f.id)?'checked':''} onchange="actualizarResumenPagoFacturas()" style="accent-color:var(--amber);width:15px;height:15px;flex-shrink:0">
+      <span style="flex:1">${f.nro} <span style="color:var(--text-muted)">· ${f.fecha}${f.vence?' · vence '+f.vence:''}</span></span>
+      <strong style="color:var(--red)">$${f.saldo.toFixed(2)}</strong>
+    </label>`).join('');
+
+  actualizarResumenPagoFacturas();
 }
+
+function actualizarResumenPagoFacturas() {
+  const checks = Array.from(document.querySelectorAll('.pago-fac-check:checked'));
+  const totalSeleccionado = checks.reduce((s,c)=>s+parseFloat(c.dataset.saldo),0);
+  const resumen = document.getElementById('pagoFacturasResumen');
+
+  if (!checks.length) {
+    resumen.textContent = 'Sin facturas seleccionadas — el pago se registrará como abono general.';
+    return;
+  }
+
+  resumen.innerHTML = `${checks.length} factura${checks.length!==1?'s':''} seleccionada${checks.length!==1?'s':''} · Saldo total: <strong style="color:var(--red)">$${totalSeleccionado.toFixed(2)}</strong>`;
+
+  // Sugerir el monto automáticamente si el campo está vacío o coincide con la selección anterior
+  const montoInput = document.getElementById('pagoMonto');
+  if (!montoInput.dataset.editadoManual) {
+    montoInput.value = totalSeleccionado.toFixed(2);
+  }
+}
+
 
 async function guardarPago() {
   if (!activePDV) return;
   const monto = parseFloat(document.getElementById('pagoMonto').value)||0;
   if (monto<=0) { showToast('Ingresa un monto válido',true); return; }
-  const facId = document.getElementById('pagoFacturaId').value;
+
+  const checks = Array.from(document.querySelectorAll('.pago-fac-check:checked'));
+  const facIds = checks.map(c=>c.value);
+
   const pago = {
     id: 'C'+String(Date.now()).slice(-6),
     fecha: new Date().toISOString().split('T')[0],
@@ -3118,7 +3152,8 @@ async function guardarPago() {
     metodo: document.getElementById('pagoMetodo').value,
     ref: document.getElementById('pagoRef').value,
     nota: document.getElementById('pagoNota').value,
-    facturaId: facId || null
+    facturaId: facIds.length === 1 ? facIds[0] : null,
+    facturasAplicadas: facIds.length > 1 ? facIds : undefined
   };
   if (!activePDV.pagos) activePDV.pagos = [];
   activePDV.pagos.push(pago);
@@ -3126,26 +3161,40 @@ async function guardarPago() {
   showLoading('Registrando pago…');
   await savePago(activePDV.id, pago);
 
-  // Aplicar a factura
-  if (facId && activePDV.facturas) {
-    const fac = activePDV.facturas.find(f=>f.id===facId);
-    if (fac) {
-      fac.saldo = Math.max(0, fac.saldo - monto);
+  // Distribuir el monto entre las facturas seleccionadas, en el orden en que aparecen (más antigua primero)
+  let restante = monto;
+  const facturasAfectadas = [];
+  if (facIds.length && activePDV.facturas) {
+    for (const facId of facIds) {
+      if (restante <= 0) break;
+      const fac = activePDV.facturas.find(f=>f.id===facId);
+      if (!fac) continue;
+      const aplicado = Math.min(fac.saldo, restante);
+      fac.saldo = Math.max(0, fac.saldo - aplicado);
       fac.pagosAplicados = fac.pagosAplicados || [];
       fac.pagosAplicados.push(pago.id);
       fac.estado = fac.saldo <= 0 ? 'pagada' : 'parcial';
+      restante -= aplicado;
+      facturasAfectadas.push(fac);
+    }
+    for (const fac of facturasAfectadas) {
       await updateFacturaRemote(fac);
     }
   }
+
   actualizarStatusPDV();
   await savePDV(activePDV);
   hideLoading();
   closeModal('modalPago');
   selectPDV(activePDV.id);
   renderRightPanel(); renderDashboard();
-  logActivity('cobro', `Cobro $${monto.toFixed(2)} ← <strong>${activePDV.nombre}</strong>`);
-  showToast(`Pago de $${monto.toFixed(2)} registrado ✓`);
-  ['pagoMonto','pagoRef','pagoNota'].forEach(id=>document.getElementById(id).value='');
+
+  const detalleFacturas = facturasAfectadas.length
+    ? ` aplicado a ${facturasAfectadas.length} factura${facturasAfectadas.length!==1?'s':''}`
+    : '';
+  logActivity('cobro', `Cobro $${monto.toFixed(2)}${detalleFacturas} ← <strong>${activePDV.nombre}</strong>`);
+  showToast(`Pago de $${monto.toFixed(2)} registrado ✓${restante>0?` (sobrante $${restante.toFixed(2)} sin aplicar)`:''}`);
+  ['pagoMonto','pagoRef','pagoNota'].forEach(id=>{ document.getElementById(id).value=''; delete document.getElementById(id).dataset.editadoManual; });
 }
 
 
