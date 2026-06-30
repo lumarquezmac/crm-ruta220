@@ -4386,8 +4386,127 @@ function generarPDFEstadoCuenta(colsSeleccionadas) {
   doc.setTextColor(...CAOBA);
   doc.text(`TOTAL POR COBRAR:  $${totalPend.toFixed(2)} USD`, W/2, finalY+6.5, { align:'center' });
 
+  // ── Bloque DPP ──
+  let dppBlockY = finalY + 16;
+  const dppTipo = activePDV.dpp;
+  const DPP_LABEL = { ka: 'DPP KA (Cuentas Claves)', tra: 'DPP Tra (Tradicional)' };
+  const DPP_ESCALONES = {
+    ka:  [ {dias:14, pct:8}, {dias:20, pct:6}, {dias:29, pct:4} ],
+    tra: [ {dias:5,  pct:8}, {dias:12, pct:6} ],
+  };
+
+  if (dppTipo && dppTipo !== 'ninguno' && DPP_ESCALONES[dppTipo]) {
+    const vigentes = facturas.map(f => {
+      const resultado = calcDppVigente(activePDV, f);
+      if (!resultado || !resultado.vigente) return null;
+      return { ...f, dpp: resultado };
+    }).filter(Boolean);
+
+    // Caja de encabezado DPP (siempre visible si el PDV tiene DPP)
+    doc.setFillColor(38, 22, 8);
+    doc.roundedRect(margen, dppBlockY, W-margen*2, 10, 2, 2, 'F');
+    doc.setDrawColor(...AMBER);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(margen, dppBlockY, W-margen*2, 10, 2, 2, 'S');
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...AMBER_L);
+    doc.text(`⚡ ${DPP_LABEL[dppTipo]}`, margen+4, dppBlockY+6.5);
+
+    // Tabla de escalones del tipo de DPP
+    const escalonesTexto = DPP_ESCALONES[dppTipo].map(e=>`-${e.pct}% a ${e.dias} días`).join('   ·   ');
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7);
+    doc.setTextColor(160, 120, 60);
+    doc.text(escalonesTexto, W-margen-2, dppBlockY+6.5, { align:'right' });
+    dppBlockY += 13;
+
+    if (vigentes.length > 0) {
+      // Título subsección
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...VERDE);
+      doc.text('DESCUENTOS VIGENTES AL DÍA DE HOY', margen, dppBlockY);
+      dppBlockY += 5;
+
+      vigentes.forEach(f => {
+        const montoConDesc = f.saldo * (1 - f.dpp.pct/100);
+        const ahorro = f.saldo - montoConDesc;
+
+        doc.setFillColor(20, 45, 30);
+        doc.roundedRect(margen, dppBlockY, W-margen*2, 14, 2, 2, 'F');
+        doc.setDrawColor(...VERDE);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(margen, dppBlockY, W-margen*2, 14, 2, 2, 'S');
+
+        // Número de factura
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(8);
+        doc.setTextColor(...AMBER_L);
+        doc.text(f.nro, margen+4, dppBlockY+5.5);
+
+        // Recibida hace N días
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(7);
+        doc.setTextColor(130, 180, 140);
+        doc.text(`Recibida ${f.fechaRecepcion||f.fecha} · ${f.dpp.diasTranscurridos} día${f.dpp.diasTranscurridos!==1?'s':''} · descuento vence a los ${f.dpp.diasLimite} días`, margen+4, dppBlockY+10.5);
+
+        // Porcentaje de descuento
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...VERDE);
+        doc.text(`-${f.dpp.pct}%`, W/2+10, dppBlockY+7, { align:'center' });
+
+        // Monto original → monto con descuento
+        doc.setFontSize(7.5);
+        doc.setTextColor(130, 180, 140);
+        doc.text(`$${f.saldo.toFixed(2)} →`, W-margen-32, dppBlockY+5.5, { align:'right' });
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...VERDE);
+        doc.text(`$${montoConDesc.toFixed(2)}`, W-margen-3, dppBlockY+5.5, { align:'right' });
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 160, 110);
+        doc.text(`ahorras $${ahorro.toFixed(2)}`, W-margen-3, dppBlockY+11, { align:'right' });
+
+        dppBlockY += 17;
+      });
+
+      // Total a pagar con descuentos aplicados
+      const totalConDesc = vigentes.reduce((s,f)=>s+(f.saldo*(1-f.dpp.pct/100)),0);
+      const facsSinDesc  = facturas.filter(f=>!vigentes.find(v=>v.id===f.id));
+      const totalSinDesc = facsSinDesc.reduce((s,f)=>s+f.saldo,0);
+      const totalFinal   = totalConDesc + totalSinDesc;
+      const ahorroTotal  = totalPend - totalFinal;
+
+      doc.setFillColor(...AMBER);
+      doc.roundedRect(margen, dppBlockY, W-margen*2, 12, 2, 2, 'F');
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8);
+      doc.setTextColor(...CAOBA);
+      doc.text(
+        `PAGANDO HOY CON DPP: $${totalFinal.toFixed(2)}  ·  AHORRO TOTAL: $${ahorroTotal.toFixed(2)}`,
+        W/2, dppBlockY+7.5, { align:'center' }
+      );
+      dppBlockY += 15;
+
+    } else {
+      // No hay descuentos vigentes — mención corta
+      doc.setFont('helvetica','italic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(120, 90, 50);
+      doc.text('No hay descuentos DPP vigentes en este momento para las facturas pendientes.', margen+4, dppBlockY+1);
+      dppBlockY += 7;
+    }
+
+    dppBlockY += 4;
+  } else {
+    dppBlockY = finalY + 16;
+  }
+
   // ── Nota legal ──
-  const noteY = finalY + 16;
+  const noteY = dppBlockY;
   if (noteY < 270) {
     doc.setFont('helvetica','italic');
     doc.setFontSize(7);
