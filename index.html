@@ -885,7 +885,31 @@ html, body {
   .mobile-sheet-close { background:none; border:none; color:var(--text-muted); font-size:22px; cursor:pointer; }
 
   /* ── RESPONSIVE ── */
-  @media (max-width:900px) {
+
+  /* Tablet horizontal (900–1200px): columnas más estrechas */
+  @media (min-width:901px) and (max-width:1200px) {
+    .app { grid-template-columns:200px 1fr 240px; }
+  }
+
+  /* Tablet vertical (601–900px): sidebar colapsado de iconos + sin panel derecho */
+  @media (min-width:601px) and (max-width:900px) {
+    .app { grid-template-columns:52px 1fr; height:calc(100vh - var(--nav-h)); }
+    .sidebar { width:52px; overflow:hidden; }
+    .sidebar-header { padding:8px 4px; }
+    .sidebar-title, .search-box, .filter-tabs, #zonaTabs, #selectZona, .pdv-list { display:none; }
+    .right-panel { display:none; }
+    .bottom-nav { display:none; }
+    .badge-ruta { display:none; }
+    .topbar-date { display:none; }
+    .pdv-stats-row { grid-template-columns:repeat(2,1fr); }
+    .dash-grid { grid-template-columns:1fr 1fr; }
+    .pdv-header-top { flex-direction:column; gap:10px; }
+    .pdv-actions { width:100%; justify-content:flex-start; flex-wrap:wrap; }
+    .sidebar-tab-icon { display:flex !important; }
+  }
+
+  /* Móvil (≤600px): layout original de 1 columna */
+  @media (max-width:600px) {
     .app { grid-template-columns:1fr; height:calc(100vh - var(--nav-h) - var(--bottom-h)); }
     .sidebar  { display:none; }
     .right-panel { display:none; }
@@ -896,7 +920,7 @@ html, body {
     .pdv-stats-row { grid-template-columns:repeat(2,1fr); }
     .dash-grid { grid-template-columns:1fr 1fr; }
     .pdv-header-top { flex-direction:column; gap:10px; }
-    .pdv-actions { width:100%; justify-content:flex-start; }
+    .pdv-actions { width:100%; justify-content:flex-start; flex-wrap:wrap; }
   }
   @media (max-width:480px) {
     .dash-grid { grid-template-columns:1fr; }
@@ -906,6 +930,34 @@ html, body {
     .modal { border-radius:16px 16px 0 0; position:fixed; bottom:0; max-height:95vh; }
     .modal-overlay { align-items:flex-end; padding:0; }
   }
+
+  /* ── MODO PANTALLA COMPLETA ── */
+  .app.fullscreen-mode { grid-template-columns:0px 1fr 0px; }
+  .app.fullscreen-mode .sidebar { width:0; overflow:hidden; padding:0; border:none; }
+  .app.fullscreen-mode .right-panel { width:0; overflow:hidden; padding:0; border:none; }
+  .app.fullscreen-mode .main { border-radius:0; }
+
+  /* Botón expandir */
+  .btn-expand {
+    background:var(--surface); border:1px solid var(--border);
+    color:var(--text-muted); font-size:13px; padding:4px 8px; border-radius:6px;
+    cursor:pointer; transition:all .15s; flex-shrink:0;
+  }
+  .btn-expand:hover { background:var(--card); color:var(--text); border-color:var(--border-lt); }
+  .app.fullscreen-mode .btn-expand { background:var(--amber); color:var(--caoba); border-color:var(--amber); }
+
+  /* Iconos del sidebar colapsado en tablet vertical */
+  .sidebar-tab-icon {
+    display:none; flex-direction:column; align-items:center;
+    gap:6px; padding:8px 4px;
+  }
+  .sidebar-tab-icon button {
+    width:36px; height:36px; border-radius:8px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text-dim); font-size:16px;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .sidebar-tab-icon button:hover, .sidebar-tab-icon button.active { background:var(--amber); color:var(--caoba); border-color:var(--amber); }
+
 
         </style>
         
@@ -927,6 +979,7 @@ html, body {
       <span id="wahaDotLabel">WA</span>
     </div>
     <div class="topbar-date" id="topDate"></div>
+    <button class="btn-expand" id="btnExpand" onclick="toggleFullscreen()" title="Expandir área de trabajo">⛶</button>
     <button class="btn btn-ghost" id="btnThemeCRM" onclick="toggleThemeCRM()" title="Cambiar tema" style="font-size:13px;padding:5px 9px">🌙</button>
     <button class="btn btn-ghost" id="btnSync" onclick="sincronizarTodo()" title="Recargar todos los datos desde Supabase" style="font-size:11px;padding:5px 10px">🔄 Sync</button>
     <button class="btn btn-qr" onclick="openModal('modalQR')" title="Conectar WhatsApp">📱 WA</button>
@@ -948,6 +1001,13 @@ html, body {
 
   <!-- SIDEBAR (desktop) -->
   <aside class="sidebar">
+    <!-- Mini iconos para tablet vertical (visible solo en 601–900px) -->
+    <div class="sidebar-tab-icon" id="sidebarIcons">
+      <button onclick="openMobilePDVSheet()" title="PDVs">📦</button>
+      <button onclick="switchModule('crm');irAlDashboard()" title="Dashboard">🏠</button>
+      <button onclick="openModal('modalNuevoPDV')" title="Nuevo PDV">➕</button>
+      <button onclick="toggleFullscreen()" title="Expandir">⛶</button>
+    </div>
     <div class="sidebar-header">
       <div class="sidebar-title">Puntos de Venta · <span id="pdvCount">0</span></div>
       <div class="search-box">
@@ -2095,6 +2155,33 @@ function logActivity(tipo, texto) {
 // ══════════════════════════════════════════
 //  TEMA CLARO/OSCURO — CRM
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+//  PANTALLA COMPLETA — Expandir área de trabajo
+// ══════════════════════════════════════════
+function applyFullscreen(on) {
+  const app = document.querySelector('#moduleCRM .app');
+  const btn = document.getElementById('btnExpand');
+  if (!app) return;
+  app.classList.toggle('fullscreen-mode', on);
+  if (btn) {
+    btn.textContent = on ? '⊠' : '⛶';
+    btn.title = on ? 'Salir de pantalla completa' : 'Expandir área de trabajo';
+  }
+}
+function toggleFullscreen() {
+  const app = document.querySelector('#moduleCRM .app');
+  if (!app) return;
+  const next = !app.classList.contains('fullscreen-mode');
+  localStorage.setItem('crm_fullscreen', next ? '1' : '0');
+  applyFullscreen(next);
+}
+(function initFullscreen() {
+  if (localStorage.getItem('crm_fullscreen') === '1') {
+    // Aplica después de que el DOM esté listo
+    requestAnimationFrame(() => applyFullscreen(true));
+  }
+})();
+
 function applyThemeCRM(mode) {
   const mod = document.getElementById('moduleCRM');
   const btn = document.getElementById('btnThemeCRM');
