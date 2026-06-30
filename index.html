@@ -468,12 +468,24 @@ html, body {
         </div>
       </div>
 
-      <div class="shell-nav-section" style="margin-top:8px">Accesos rápidos</div>
+      <div class="shell-nav-section" style="margin-top:8px">Accesos rápidos · CRM</div>
 
       <div class="shell-nav-item" onclick="switchModule('crm'); setTimeout(()=>document.getElementById('modalNuevoPDV')?.classList.add('open'),200)">
         <span class="nav-icon">➕</span>
         <span>Nuevo PDV</span>
       </div>
+
+      <div class="shell-nav-item" onclick="switchModule('crm'); setTimeout(()=>irAlDashboard?.(),200)">
+        <span class="nav-icon">🏠</span>
+        <span>Ir al Dashboard</span>
+      </div>
+
+      <div class="shell-nav-item" onclick="switchModule('crm'); setTimeout(()=>{irAlDashboard?.();document.getElementById('iaPregunta')?.focus();},250)">
+        <span class="nav-icon">✨</span>
+        <span>Preguntar a la IA</span>
+      </div>
+
+    <div class="shell-nav-section" style="margin-top:8px">Accesos rápidos · Ruta 220 Pro</div>
 
       <div class="shell-nav-item" onclick="switchModule('pro'); setTimeout(()=>genCierreActive?.(),200)">
         <span class="nav-icon">⬆️</span>
@@ -1148,7 +1160,10 @@ html, body {
         <div class="form-group full"><label>Dirección</label><input type="text" id="nDir" placeholder="Sector, municipio..."></div>
         <div class="form-group"><label>Latitud</label><input type="text" id="nLat" placeholder="Ej: 10.9678"></div>
         <div class="form-group"><label>Longitud</label><input type="text" id="nLng" placeholder="Ej: -63.8589"></div>
-        <div class="form-group full" style="margin-top:-8px"><div style="font-size:10px;color:var(--text-muted)">💡 Abre Google Maps, mantén presionado el punto exacto del PDV, copia las coordenadas que aparecen y pégalas aquí (lat, lng separadas por coma).</div></div>
+        <div class="form-group full" style="margin-top:-8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost" style="font-size:11px;padding:6px 10px" onclick="capturarUbicacion('n')">📍 Capturar ubicación actual</button>
+          <span id="nGpsStatus" style="font-size:10px;color:var(--text-muted)">Estando en el PDV, presiona el botón para guardar el punto exacto.</span>
+        </div>
         <div class="form-group"><label>Tipo de negocio</label>
           <select id="nTipo"><option>Bodegón</option><option>Licorera</option><option>Supermercado</option><option>Bar / Restaurant</option><option>Hotel</option><option>Panadería</option><option>Otro</option></select>
         </div>
@@ -1370,6 +1385,10 @@ html, body {
         <div class="form-group full"><label>Dirección</label><input type="text" id="eDir"></div>
         <div class="form-group"><label>Latitud</label><input type="text" id="eLat" placeholder="Ej: 10.9678"></div>
         <div class="form-group"><label>Longitud</label><input type="text" id="eLng" placeholder="Ej: -63.8589"></div>
+        <div class="form-group full" style="margin-top:-8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost" style="font-size:11px;padding:6px 10px" onclick="capturarUbicacion('e')">📍 Capturar ubicación actual</button>
+          <span id="eGpsStatus" style="font-size:10px;color:var(--text-muted)">Estando en el PDV, presiona el botón para actualizar el punto exacto.</span>
+        </div>
         <div class="form-group"><label>Tipo de negocio</label>
           <select id="eTipo"><option>Bodegón</option><option>Licorera</option><option>Supermercado</option><option>Bar / Restaurant</option><option>Hotel</option><option>Panadería</option><option>Otro</option></select>
         </div>
@@ -2524,6 +2543,42 @@ function abrirWhatsApp() {
 function abrirEnGoogleMaps() {
   if (!activePDV || !activePDV.lat || !activePDV.lng) return;
   window.open(`https://www.google.com/maps/search/?api=1&query=${activePDV.lat},${activePDV.lng}`, '_blank');
+}
+
+function capturarUbicacion(prefix) {
+  const latInput = document.getElementById(prefix+'Lat');
+  const lngInput = document.getElementById(prefix+'Lng');
+  const status    = document.getElementById(prefix+'GpsStatus');
+
+  if (!navigator.geolocation) {
+    status.textContent = '⚠️ Tu navegador no soporta geolocalización.';
+    status.style.color = 'var(--red)';
+    return;
+  }
+
+  status.textContent = '📡 Obteniendo ubicación…';
+  status.style.color = 'var(--amber-lt)';
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = pos.coords.latitude.toFixed(6);
+      const lng = pos.coords.longitude.toFixed(6);
+      latInput.value = lat;
+      lngInput.value = lng;
+      const precision = Math.round(pos.coords.accuracy);
+      status.textContent = `✅ Ubicación capturada (precisión ±${precision}m)`;
+      status.style.color = 'var(--green)';
+    },
+    (err) => {
+      let msg = 'No se pudo obtener la ubicación.';
+      if (err.code === err.PERMISSION_DENIED) msg = '⚠️ Permiso de ubicación denegado. Actívalo en tu navegador.';
+      else if (err.code === err.POSITION_UNAVAILABLE) msg = '⚠️ Ubicación no disponible en este momento.';
+      else if (err.code === err.TIMEOUT) msg = '⚠️ Se agotó el tiempo de espera. Intenta de nuevo.';
+      status.textContent = msg;
+      status.style.color = 'var(--red)';
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+  );
 }
 
 function renderPedidos() {
