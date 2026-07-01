@@ -1,0 +1,19 @@
+{
+  "name": "Suite Ruta 220",
+  "short_name": "Ruta 220",
+  "description": "CRM y gestión de ruta para Ejecutivo de Ventas Ron Santa Teresa",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0D0804",
+  "theme_color": "#C8873A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23120C04'/><text y='.9em' font-size='80' x='10'>📦</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"]
+}
