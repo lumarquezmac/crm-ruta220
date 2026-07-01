@@ -2410,10 +2410,11 @@ ${contexto}
 Responde la pregunta del usuario de forma breve, concreta y en español venezolano natural, citando nombres de PDVs y cifras exactas cuando aplique. Si la pregunta no se puede responder con estos datos, dilo claramente. No inventes información que no esté en los datos.`;
 
   const modelosFallback = [
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'deepseek/deepseek-r1-distill-llama-70b:free',
-    'google/gemini-2.0-flash-exp:free',
-    'mistralai/mistral-small-3.1-24b-instruct:free',
+    'openrouter/auto',                              // Selector automático de OpenRouter (más robusto)
+    'openai/gpt-oss-120b:free',                     // GPT-OSS 120B de OpenAI — mejor calidad gratuita actual
+    'meta-llama/llama-3.3-70b-instruct:free',       // Llama 3.3 70B — muy estable
+    'nvidia/llama-3.1-nemotron-70b-instruct:free',  // NVIDIA Nemotron — bueno en español
+    'google/gemma-3-27b-it:free',                   // Gemma 3 27B de Google
   ];
 
   let texto = null;
