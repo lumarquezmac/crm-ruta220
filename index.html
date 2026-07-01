@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#C8873A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ruta 220">
 <title>Ruta 220 · Suite Completa · Luis Márquez</title>
 
 <!-- External libs (CRM) -->
@@ -1085,6 +1091,9 @@ html, body {
 
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">PDVs con deuda pendiente</div>
       <div id="dashDeudas"></div>
+
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:20px 0 10px">📋 Últimas visitas registradas</div>
+      <div id="dashVisitas"></div>
     </div>
 
     <!-- PDV view -->
@@ -1109,7 +1118,8 @@ html, body {
         <div class="tab active" onclick="switchTab(this,'tabCobranza')">💰 Cobranza</div>
         <div class="tab" onclick="switchTab(this,'tabChat')">✅ Tareas</div>
         <div class="tab" onclick="switchTab(this,'tabPedidos')">📦 Pedidos</div>
-        <div class="tab" onclick="switchTab(this,'tabInfo')">📋 Info</div>
+        <div class="tab" onclick="switchTab(this,'tabVisitas')">📋 Historial</div>
+        <div class="tab" onclick="switchTab(this,'tabInfo')">ℹ️ Info</div>
       </div>
 
       <!-- Tab Tasks -->
@@ -1160,6 +1170,15 @@ html, body {
       </div>
 
       <!-- Tab Info -->
+      <!-- TAB: HISTORIAL DE VISITAS -->
+      <div id="tabVisitas" style="display:none" class="tab-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">📋 Historial de visitas</div>
+          <button class="btn btn-primary" onclick="abrirModalVisita()">+ Registrar visita</button>
+        </div>
+        <div id="visitasList"></div>
+      </div>
+
       <div id="tabInfo" style="display:none" class="tab-content">
         <div id="infoView"></div>
       </div>
@@ -1741,6 +1760,61 @@ html, body {
   </div>
 </div>
 
+<!-- MODAL: Registrar / Editar Visita -->
+<div class="modal-overlay" id="modalVisita">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="visitaModalTitle">📋 Registrar Visita</span>
+      <button class="modal-close" onclick="closeModal('modalVisita')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="visitaId">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Fecha *</label>
+          <input type="date" id="visitaFecha">
+        </div>
+        <div class="form-group">
+          <label>Tipo de visita</label>
+          <select id="visitaTipo">
+            <option value="rutina">Visita de rutina</option>
+            <option value="cobranza">Cobranza</option>
+            <option value="venta">Presentación / Venta</option>
+            <option value="entrega">Entrega de mercancía</option>
+            <option value="reclamo">Atención de reclamo</option>
+            <option value="prospecto">Prospección</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>Contacto atendido</label>
+          <input type="text" id="visitaContacto" placeholder="Nombre del encargado, dueño, etc.">
+        </div>
+        <div class="form-group full">
+          <label>Resultado de la visita *</label>
+          <textarea id="visitaResultado" placeholder="¿Qué pasó? ¿Cómo estuvo el PDV? ¿Pedido tomado, cobro recibido, objeción planteada?..." style="min-height:70px"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Acuerdos y compromisos</label>
+          <textarea id="visitaAcuerdos" placeholder="¿Qué se acordó con el cliente? Precio especial, fecha de pago, reposición, degustación..." style="min-height:60px"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Próxima acción</label>
+          <input type="text" id="visitaProximaAccion" placeholder="Ej: Llamar el miércoles para confirmar pedido, llevar estado de cuenta...">
+        </div>
+        <div class="form-group">
+          <label>Fecha próxima visita</label>
+          <input type="date" id="visitaProximaFecha">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalVisita')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarVisita()">💾 Guardar visita</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Editar Factura -->
 <div class="modal-overlay" id="modalEditarFactura">
   <div class="modal" style="max-width:420px">
@@ -1957,7 +2031,8 @@ async function cargarPDVs() {
       { data: pagos },
       { data: mensajes },
       { data: tasks },
-      { data: saldoFavor }
+      { data: saldoFavor },
+      { data: visitas }
     ] = await Promise.all([
       sb.from('pedidos').select('*').order('created_at'),
       sb.from('facturas').select('*').order('fecha'),
@@ -1965,6 +2040,7 @@ async function cargarPDVs() {
       sb.from('mensajes').select('*').order('created_at'),
       sb.from('tasks').select('*').order('fecha'),
       sb.from('saldo_favor').select('*').order('fecha'),
+      sb.from('visitas').select('*').order('fecha', { ascending: false }),
     ]);
 
     // Ensamblar objetos PDV completos
@@ -1977,6 +2053,7 @@ async function cargarPDVs() {
       pagos:      (pagos      || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id, facturasAplicadas: x.facturas_aplicadas||null})),
       chat:       (mensajes   || []).filter(x => x.pdv_id === p.id),
       saldoFavor: (saldoFavor || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0})),
+      visitas:    (visitas    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, proximaAccion: x.proxima_accion||'', proximaFecha: x.proxima_fecha||''})),
     }));
 
     setConexion(true);
@@ -1993,9 +2070,9 @@ async function cargarPDVs() {
 // ══════════════════════════════════════════
 //  SINCRONIZAR — recarga sin refrescar página
 // ══════════════════════════════════════════
-async function sincronizarTodo() {
+async function sincronizarTodo(silencioso = false) {
   const btn = document.getElementById('btnSync');
-  if (btn) { btn.textContent = '⏳ Sync'; btn.disabled = true; }
+  if (btn && !silencioso) { btn.textContent = '⏳ Sync'; btn.disabled = true; }
 
   const pdvActivoId = activePDV?.id || null;
 
@@ -2013,8 +2090,8 @@ async function sincronizarTodo() {
   renderPDVList(document.getElementById('searchPDV')?.value || '', currentFilter);
   renderDashboard();
 
-  if (btn) { btn.textContent = '🔄 Sync'; btn.disabled = false; }
-  showToast('✓ Datos actualizados');
+  if (btn && !silencioso) { btn.textContent = '🔄 Sync'; btn.disabled = false; }
+  if (!silencioso) showToast('✓ Datos actualizados');
 }
 
 // ══════════════════════════════════════════
@@ -2133,6 +2210,24 @@ async function saveSaldoFavorRemote(pdvId, m) {
 }
 
 // ══════════════════════════════════════════
+//  SUPABASE: VISITAS
+// ══════════════════════════════════════════
+async function saveVisitaRemote(pdvId, v) {
+  const { error } = await sb.from('visitas').upsert({
+    id: v.id, pdv_id: pdvId, fecha: v.fecha,
+    contacto: v.contacto||'', tipo: v.tipo||'rutina',
+    resultado: v.resultado||'', acuerdos: v.acuerdos||'',
+    proxima_accion: v.proximaAccion||'',
+    proxima_fecha: v.proximaFecha||null
+  }, { onConflict: 'id' });
+  if (error) {
+    console.error('Visita error:', JSON.stringify(error));
+    showToast('Error al guardar visita: ' + (error.message || error.code), true);
+    return false;
+  }
+  return true;
+}
+
 //  SUPABASE: MENSAJES (CHAT)
 // ══════════════════════════════════════════
 async function savemensaje(pdvId, m) {
@@ -2588,7 +2683,7 @@ function selectPDV(id) {
     <div class="pdv-stat"><div class="pdv-stat-label">Pedidos</div><div class="pdv-stat-val blue">${(activePDV.pedidos||[]).length}</div></div>
     <div class="pdv-stat"><div class="pdv-stat-label">Portafolio</div><div class="pdv-stat-val" style="font-size:11px;padding-top:2px">${activePDV.portafolio}</div></div>
   `;
-  renderChat(); renderPedidos(); renderCobranza(); renderInfo();
+  renderChat(); renderPedidos(); renderCobranza(); renderInfo(); renderVisitas();
   switchTabById('tabCobranza');
   renderPDVList(document.getElementById('searchPDV').value, currentFilter);
   // mobile bottom nav
@@ -3077,6 +3172,27 @@ function renderDashboard() {
         <div class="dash-card-sub">Ventas: $${zonaStats[z].ventas.toLocaleString('es-VE',{minimumFractionDigits:0})}</div>
         <div class="dash-card-sub" style="color:${zonaStats[z].deuda>0?'var(--red)':'var(--green)'}">Deuda: $${zonaStats[z].deuda.toFixed(2)}</div>
       </div>`).join('');
+
+  // Últimas 5 visitas de toda la ruta
+  const todasVisitas = pdvs.flatMap(p => (p.visitas||[]).map(v=>({...v, pdvNombre:p.nombre, pdvId:p.id})))
+    .sort((a,b)=>new Date(b.fecha)-new Date(a.fecha))
+    .slice(0,5);
+  const dashVis = document.getElementById('dashVisitas');
+  if (dashVis) {
+    dashVis.innerHTML = !todasVisitas.length
+      ? `<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">Sin visitas registradas todavía</div></div>`
+      : todasVisitas.map(v=>`
+        <div class="order-card" style="cursor:pointer;margin-bottom:8px;border-left:3px solid ${TIPO_VISITA_COLOR[v.tipo]||'var(--border)'}" onclick="selectPDV('${v.pdvId}');setTimeout(()=>switchTabById('tabVisitas'),200)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-weight:600;font-size:13px;color:var(--amber-lt)">${v.pdvNombre}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${v.fecha} · <span style="color:${TIPO_VISITA_COLOR[v.tipo]||'var(--text-dim)'}">${TIPO_VISITA_LABEL[v.tipo]||v.tipo}</span>${v.contacto?' · 👤 '+v.contacto:''}</div>
+            </div>
+            ${v.proximaFecha?`<span style="font-size:10px;color:var(--green);white-space:nowrap">⏭ ${v.proximaFecha}</span>`:''}
+          </div>
+          ${v.resultado?`<div style="font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.5">${v.resultado.length>120?v.resultado.slice(0,118)+'…':v.resultado}</div>`:''}
+        </div>`).join('');
+  }
 }
 
 function renderRightPanel() {
@@ -4016,6 +4132,166 @@ async function confirmarCruceSaldoFavor() {
   renderRightPanel(); renderDashboard();
   logActivity('cobro', `Saldo a favor cruzado $${totalAplicado.toFixed(2)} → ${facturasAfectadas.length} factura(s) · <strong>${activePDV.nombre}</strong>`);
   showToast(`Cruce aplicado: $${totalAplicado.toFixed(2)} ✓${restante<disponible-totalAplicado?'':''}`);
+}
+
+// ══════════════════════════════════════════
+//  HISTORIAL DE VISITAS
+// ══════════════════════════════════════════
+const TIPO_VISITA_LABEL = {
+  rutina:'Rutina', cobranza:'Cobranza', venta:'Venta/Presentación',
+  entrega:'Entrega', reclamo:'Reclamo', prospecto:'Prospección', otro:'Otro'
+};
+const TIPO_VISITA_COLOR = {
+  rutina:'var(--text-muted)', cobranza:'var(--amber-lt)', venta:'var(--green)',
+  entrega:'var(--blue)', reclamo:'var(--red)', prospecto:'var(--gold)', otro:'var(--text-dim)'
+};
+
+function renderVisitas() {
+  if (!activePDV) return;
+  const visitas = (activePDV.visitas||[]).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+  const cont = document.getElementById('visitasList');
+  if (!cont) return;
+
+  if (!visitas.length) {
+    cont.innerHTML = `<div class="empty-state" style="padding:30px">
+      <div class="empty-state-icon">📋</div>
+      <div class="empty-state-text">Sin visitas registradas.<br>Presiona "+ Registrar visita" para agregar la primera.</div>
+    </div>`;
+    return;
+  }
+
+  const hoy = new Date().toISOString().split('T')[0];
+
+  cont.innerHTML = visitas.map(v => {
+    const esFutura = v.proximaFecha && v.proximaFecha >= hoy;
+    const diasParaProxima = v.proximaFecha
+      ? Math.ceil((new Date(v.proximaFecha) - new Date()) / 86400000)
+      : null;
+
+    return `
+    <div class="order-card" style="margin-bottom:10px;border-left:3px solid ${TIPO_VISITA_COLOR[v.tipo]||'var(--border)'}">
+      <div class="order-header">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="order-id">${v.fecha}</div>
+            <span class="tag" style="background:transparent;border-color:${TIPO_VISITA_COLOR[v.tipo]||'var(--border)'};color:${TIPO_VISITA_COLOR[v.tipo]||'var(--text-dim)'}">
+              ${TIPO_VISITA_LABEL[v.tipo]||v.tipo}
+            </span>
+          </div>
+          ${v.contacto?`<div class="order-date">👤 ${v.contacto}</div>`:''}
+        </div>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="abrirEditarVisita('${v.id}')">✏️</button>
+          <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:var(--red);border-color:var(--red)" onclick="eliminarVisita('${v.id}')">🗑</button>
+        </div>
+      </div>
+
+      ${v.resultado?`
+      <div style="font-size:12.5px;color:var(--text);margin:8px 0 4px;line-height:1.5">
+        <span style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px">Resultado</span><br>
+        ${v.resultado}
+      </div>`:''}
+
+      ${v.acuerdos?`
+      <div style="font-size:12px;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-top:6px">
+        <span style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px">Acuerdos</span><br>
+        ${v.acuerdos}
+      </div>`:''}
+
+      ${v.proximaAccion||v.proximaFecha?`
+      <div style="display:flex;align-items:flex-start;gap:8px;margin-top:8px;padding:7px 10px;background:${esFutura?'rgba(61,170,110,.08)':'rgba(90,67,42,.2)'};border:1px solid ${esFutura?'var(--green)':'var(--border)'};border-radius:7px">
+        <span style="font-size:14px">⏭</span>
+        <div style="font-size:12px;color:${esFutura?'var(--green)':'var(--text-dim)'}">
+          ${v.proximaAccion?`<strong>${v.proximaAccion}</strong>`:''}
+          ${v.proximaFecha?`<span style="margin-left:6px;font-size:11px;color:var(--text-muted)">${v.proximaFecha}${diasParaProxima!==null?' ('+( diasParaProxima===0?'hoy': diasParaProxima>0?'en '+diasParaProxima+' días': Math.abs(diasParaProxima)+' días atrás')+')':''}</span>`:''}
+        </div>
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function abrirModalVisita() {
+  if (!activePDV) return;
+  document.getElementById('visitaId').value = '';
+  document.getElementById('visitaFecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('visitaTipo').value = 'rutina';
+  document.getElementById('visitaContacto').value = '';
+  document.getElementById('visitaResultado').value = '';
+  document.getElementById('visitaAcuerdos').value = '';
+  document.getElementById('visitaProximaAccion').value = '';
+  document.getElementById('visitaProximaFecha').value = '';
+  document.getElementById('visitaModalTitle').textContent = '📋 Registrar Visita';
+  openModal('modalVisita');
+}
+
+function abrirEditarVisita(id) {
+  if (!activePDV) return;
+  const v = (activePDV.visitas||[]).find(x=>x.id===id);
+  if (!v) return;
+  document.getElementById('visitaId').value = v.id;
+  document.getElementById('visitaFecha').value = v.fecha;
+  document.getElementById('visitaTipo').value = v.tipo||'rutina';
+  document.getElementById('visitaContacto').value = v.contacto||'';
+  document.getElementById('visitaResultado').value = v.resultado||'';
+  document.getElementById('visitaAcuerdos').value = v.acuerdos||'';
+  document.getElementById('visitaProximaAccion').value = v.proximaAccion||'';
+  document.getElementById('visitaProximaFecha').value = v.proximaFecha||'';
+  document.getElementById('visitaModalTitle').textContent = '✏️ Editar Visita';
+  openModal('modalVisita');
+}
+
+async function guardarVisita() {
+  if (!activePDV) return;
+  const fecha     = document.getElementById('visitaFecha').value;
+  const resultado = document.getElementById('visitaResultado').value.trim();
+  if (!fecha)     { showToast('La fecha es obligatoria', true); return; }
+  if (!resultado) { showToast('El resultado es obligatorio', true); return; }
+
+  const id = document.getElementById('visitaId').value;
+  if (!activePDV.visitas) activePDV.visitas = [];
+
+  let visita;
+  if (id) {
+    visita = activePDV.visitas.find(x=>x.id===id);
+    if (!visita) return;
+  } else {
+    visita = { id: 'V' + Date.now() };
+    activePDV.visitas.unshift(visita);
+  }
+
+  visita.fecha          = fecha;
+  visita.tipo           = document.getElementById('visitaTipo').value;
+  visita.contacto       = document.getElementById('visitaContacto').value.trim();
+  visita.resultado      = resultado;
+  visita.acuerdos       = document.getElementById('visitaAcuerdos').value.trim();
+  visita.proximaAccion  = document.getElementById('visitaProximaAccion').value.trim();
+  visita.proximaFecha   = document.getElementById('visitaProximaFecha').value || null;
+
+  showLoading('Guardando visita…');
+  const ok = await saveVisitaRemote(activePDV.id, visita);
+  hideLoading();
+  if (!ok) return;
+
+  closeModal('modalVisita');
+  renderVisitas();
+  renderDashboard();
+  logActivity('visita', `Visita registrada → <strong>${activePDV.nombre}</strong> (${TIPO_VISITA_LABEL[visita.tipo]||visita.tipo})`);
+  showToast('Visita guardada ✓');
+}
+
+async function eliminarVisita(id) {
+  if (!activePDV) return;
+  const v = (activePDV.visitas||[]).find(x=>x.id===id);
+  if (!v) return;
+  if (!confirm(`¿Eliminar la visita del ${v.fecha}?`)) return;
+
+  showLoading('Eliminando…');
+  await sb.from('visitas').delete().eq('id', id);
+  activePDV.visitas = (activePDV.visitas||[]).filter(x=>x.id!==id);
+  hideLoading();
+  renderVisitas();
+  renderDashboard();
+  showToast('Visita eliminada ✓');
 }
 
 function actualizarStatusPDV() {
@@ -6525,6 +6801,102 @@ checkAuth();
   const hamDate = document.getElementById('hamDate');
   if (hamDate) hamDate.textContent = str;
 })();
+</script>
+
+<!-- ══════════════════════════════════════════
+     SERVICE WORKER + MODO OFFLINE
+══════════════════════════════════════════ -->
+<style>
+  #offlineBanner {
+    display: none;
+    position: fixed;
+    bottom: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2D1A00;
+    border: 1px solid #C8873A;
+    color: #E8A855;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 20px;
+    z-index: 9998;
+    white-space: nowrap;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    animation: fadeInUp .3s ease;
+  }
+  #offlineBanner.online {
+    background: #0D2D1A;
+    border-color: #3DAA6E;
+    color: #3DAA6E;
+  }
+  @keyframes fadeInUp {
+    from { opacity:0; transform:translateX(-50%) translateY(10px); }
+    to   { opacity:1; transform:translateX(-50%) translateY(0); }
+  }
+</style>
+
+<div id="offlineBanner">📶 Sin conexión · mostrando datos guardados</div>
+
+<script>
+(function initServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  // Registrar el SW
+  navigator.serviceWorker.register('./sw.js')
+    .then(reg => {
+      console.log('[SW] Registrado:', reg.scope);
+    })
+    .catch(err => {
+      console.warn('[SW] No se pudo registrar:', err);
+    });
+
+  // Escuchar mensajes del SW
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'OFFLINE_MODE') {
+      mostrarBannerOffline(false);
+    }
+  });
+
+  // Detectar cambios de conectividad del navegador
+  window.addEventListener('online', () => {
+    ocultarBannerOffline();
+    // Notificar al SW que estamos online para resetear el flag
+    navigator.serviceWorker.ready.then(reg => {
+      reg.active?.postMessage({ type: 'ONLINE_RESTORED' });
+    });
+    // Sincronizar datos frescos automáticamente
+    if (typeof sincronizarTodo === 'function') {
+      setTimeout(() => sincronizarTodo(true), 1000);
+    }
+  });
+
+  window.addEventListener('offline', () => {
+    mostrarBannerOffline(false);
+  });
+
+  // Verificar estado inicial
+  if (!navigator.onLine) {
+    mostrarBannerOffline(false);
+  }
+})();
+
+function mostrarBannerOffline(esOnline) {
+  const banner = document.getElementById('offlineBanner');
+  if (!banner) return;
+  banner.className = esOnline ? 'online' : '';
+  banner.textContent = esOnline
+    ? '✅ Conexión restaurada · sincronizando...'
+    : '📶 Sin conexión · mostrando datos guardados';
+  banner.style.display = 'block';
+  if (esOnline) {
+    setTimeout(() => { banner.style.display = 'none'; }, 3000);
+  }
+}
+
+function ocultarBannerOffline() {
+  mostrarBannerOffline(true);
+}
 </script>
 
 </body>
