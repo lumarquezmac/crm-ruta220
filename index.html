@@ -875,6 +875,25 @@ html, body {
     height:var(--bottom-h); z-index:90;
     justify-content:space-around; align-items:center;
   }
+
+  /* FAB — botón flotante de acción rápida */
+  .fab-btn {
+    display:none;
+    position:fixed;
+    bottom:80px; right:18px;
+    width:54px; height:54px;
+    border-radius:50%;
+    background:var(--amber);
+    color:var(--caoba);
+    font-size:26px; font-weight:700;
+    border:none; cursor:pointer;
+    box-shadow:0 4px 18px rgba(200,135,58,.5);
+    z-index:89;
+    align-items:center; justify-content:center;
+    transition:transform .15s, box-shadow .15s;
+  }
+  .fab-btn:hover { transform:scale(1.08); box-shadow:0 6px 24px rgba(200,135,58,.7); }
+  .fab-btn.visible { display:flex; }
   .bn-item {
     flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:3px; cursor:pointer; padding:6px 0; border-radius:8px; transition:all .15s;
@@ -1174,7 +1193,7 @@ html, body {
       <div id="tabVisitas" style="display:none" class="tab-content">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">📋 Historial de visitas</div>
-          <button class="btn btn-primary" onclick="abrirModalVisita()">+ Registrar visita</button>
+          <button class="btn btn-primary" style="font-size:13px;padding:7px 14px" onclick="abrirModalVisita()">+ Registrar visita</button>
         </div>
         <div id="visitasList"></div>
       </div>
@@ -1217,6 +1236,9 @@ html, body {
     <div class="bn-item-icon">📱</div>WhatsApp
   </div>
 </nav>
+
+<!-- FAB — botón flotante de acción rápida (aparece en pestaña Historial) -->
+<button class="fab-btn" id="fabVisita" onclick="abrirModalVisita()" title="Registrar visita">+</button>
 
 <!-- MOBILE PDV SHEET -->
 <div class="mobile-pdv-sheet" id="mobilePDVSheet" onclick="closeMobilePDVSheet(event)">
@@ -4153,10 +4175,15 @@ function renderVisitas() {
   if (!cont) return;
 
   if (!visitas.length) {
-    cont.innerHTML = `<div class="empty-state" style="padding:30px">
-      <div class="empty-state-icon">📋</div>
-      <div class="empty-state-text">Sin visitas registradas.<br>Presiona "+ Registrar visita" para agregar la primera.</div>
-    </div>`;
+    cont.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;text-align:center;gap:16px">
+        <div style="font-size:48px;opacity:.4">📋</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text-dim)">Sin visitas registradas</div>
+        <div style="font-size:13px;color:var(--text-muted);max-width:240px;line-height:1.5">Registra tu primera visita a este PDV para llevar el historial de contacto.</div>
+        <button class="btn btn-primary" style="margin-top:8px;padding:12px 28px;font-size:14px;font-weight:700;border-radius:12px" onclick="abrirModalVisita()">
+          📋 + Registrar primera visita
+        </button>
+      </div>`;
     return;
   }
 
@@ -4992,10 +5019,13 @@ function switchTab(el, tabId) {
   switchTabById(tabId);
 }
 function switchTabById(tabId) {
-  ['tabChat','tabPedidos','tabCobranza','tabInfo'].forEach(id=>{
+  ['tabChat','tabPedidos','tabCobranza','tabInfo','tabVisitas'].forEach(id=>{
     const el=document.getElementById(id);
-    el.style.display = id===tabId?(id==='tabChat'?'flex':'block'):'none';
+    if (el) el.style.display = id===tabId?(id==='tabChat'?'flex':'block'):'none';
   });
+  // Mostrar FAB solo en la pestaña Historial
+  const fab = document.getElementById('fabVisita');
+  if (fab) fab.classList.toggle('visible', tabId === 'tabVisitas');
 }
 
 function openModal(id) {
