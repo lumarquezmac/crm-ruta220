@@ -2070,7 +2070,7 @@ async function cargarPDVs() {
       ...p,
       credito: parseFloat(p.credito) || 0,
       tasks:      (tasks      || []).filter(x => x.pdv_id === p.id),
-      pedidos:    (pedidos    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, items: x.items || [], total: parseFloat(x.total)||0})),
+      pedidos:    (pedidos    || []).filter(x => x.pdv_id === p.id).map(x => ({...x, items: x.items || [], total: parseFloat(x.total)||0, carga: x.carga||'por_cargar'})),
       facturas:   (facturas   || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, saldo: parseFloat(x.saldo)||0, pagosAplicados: x.pagos_aplicados||[], fechaRecepcion: x.fecha_recepcion||x.fecha})),
       pagos:      (pagos      || []).filter(x => x.pdv_id === p.id).map(x => ({...x, monto: parseFloat(x.monto)||0, facturaId: x.factura_id, facturasAplicadas: x.facturas_aplicadas||null})),
       chat:       (mensajes   || []).filter(x => x.pdv_id === p.id),
@@ -2153,7 +2153,8 @@ async function savePedido(pdvId, ped) {
     id: ped.id, pdv_id: pdvId, fecha: ped.fecha,
     items: ped.items, total: ped.total,
     condicion: ped.condicion, moneda: ped.moneda,
-    estado: ped.estado, notas: ped.notas||''
+    estado: ped.estado, notas: ped.notas||'',
+    carga: ped.carga||'por_cargar'
   }, { onConflict: 'id' });
   if (error) {
     console.error('Pedido error:', JSON.stringify(error));
@@ -2961,7 +2962,9 @@ function renderPedidos() {
   if (!pedidos.length) { cont.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-text">Sin pedidos registrados</div></div>`; return; }
   const eTag  = {pagado:'tag-green',entregado:'tag-blue',pendiente_cobro:'tag-amber',vencido:'tag-red'};
   const eLabel= {pagado:'Pagado',entregado:'Entregado',pendiente_cobro:'Pendiente cobro',vencido:'Vencido'};
-  cont.innerHTML = pedidos.map(p=>`
+  cont.innerHTML = pedidos.map(p=>{
+    const cargado = p.carga === 'cargado';
+    return `
     <div class="order-card">
       <div class="order-header">
         <div><div class="order-id">${p.id}</div><div class="order-date">${p.fecha} · ${p.condicion}</div></div>
@@ -2972,9 +2975,34 @@ function renderPedidos() {
       </div>
       <div class="order-items">${p.items.map(i=>`${i.qty}x ${i.prod} @ $${i.price}`).join('<br>')}</div>
       ${p.notas?`<div style="font-size:11px;color:var(--text-muted);margin-top:5px">📝 ${p.notas}</div>`:''}
-      <div class="order-total"><span style="color:var(--text-muted)">Total</span><span style="color:var(--amber-lt)">${p.moneda} ${p.total.toFixed(2)}</span></div>
-    </div>`).join('');
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+        <span style="color:var(--text-muted);font-size:12px">Total</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="toggleCargaPedido('${p.id}')" style="
+            font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;border:none;cursor:pointer;
+            background:${cargado?'var(--green)':'var(--surface)'};
+            color:${cargado?'#fff':'var(--text-muted)'};
+            border:1px solid ${cargado?'var(--green)':'var(--border)'};
+            transition:all .2s">
+            ${cargado?'✅ Cargado':'📦 Por cargar'}
+          </button>
+          <span style="color:var(--amber-lt);font-weight:700">${p.moneda} ${p.total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
+
+async function toggleCargaPedido(pedId) {
+  if (!activePDV) return;
+  const ped = (activePDV.pedidos||[]).find(x=>x.id===pedId);
+  if (!ped) return;
+  ped.carga = ped.carga === 'cargado' ? 'por_cargar' : 'cargado';
+  renderPedidos();
+  await savePedido(activePDV.id, ped);
+  logActivity('pedido', `Pedido ${ped.id} marcado como <strong>${ped.carga === 'cargado' ? 'Cargado' : 'Por cargar'}</strong> · ${activePDV.nombre}`);
+}
+
 
 function ordenarFacturas(lista, orden) {
   switch(orden) {
@@ -5739,6 +5767,13 @@ function renderCard(did,pdv,idx,cont){
       <div class="sc on" id="sp_${did}_${pdv.id}">
       <div style='padding:8px;background:var(--surface2);border-radius:6px;margin-bottom:8px'>🎯 KPI Activación<br><label class='cki'><input type='checkbox' ${pdv.activado?'checked':''} onchange="saveAct('${did}','${pdv.id}',this.checked)"> Activado</label><div id='sku_${did}_${pdv.id}'>${buildSkuSelects(did,pdv.id,pdv.activationSkus||[''])}</div><button class='badd' onclick="addSku('${did}','${pdv.id}')">+ SKU</button></div>
         ${buildPG(did,pdv)}
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <button onclick="enviarPedidoAlCRM('${did}','${pdv.id}')"
+            style="width:100%;padding:10px;background:var(--accent);color:#1a0e06;font-weight:700;font-size:13px;border:none;border-radius:8px;cursor:pointer;font-family:var(--sans)">
+            📤 Enviar pedido al CRM
+          </button>
+          <div id="crmSyncStatus_${did}_${pdv.id}" style="font-size:11px;color:var(--muted);text-align:center;margin-top:5px"></div>
+        </div>
       </div>
 
       <!-- COBRANZA -->
@@ -6006,6 +6041,79 @@ function setDest(d,id,dest){
   document.getElementById('pc_'+d+'_'+id)?.querySelectorAll('.db').forEach(b=>{
     b.className='db'+(b.textContent.includes('RONES')&&dest==='RONES'?' sR':b.textContent.includes('UPA')&&dest==='UPA'?' sU':'');
   });
+}
+
+// ══════════════════════════════════════════
+//  SINCRONIZACIÓN PRO → CRM
+// ══════════════════════════════════════════
+async function enviarPedidoAlCRM(did, proId) {
+  const statusEl = document.getElementById(`crmSyncStatus_${did}_${proId}`);
+  const data = getDay(did);
+  const pdvPro = data?.pdvs?.find(p => p.id === proId);
+  if (!pdvPro) return;
+
+  // Construir lista de items con productos que tengan cantidad > 0
+  const items = Object.entries(pdvPro.prods || {})
+    .filter(([, v]) => parseFloat(v) > 0)
+    .map(([prod, qty]) => ({
+      prod,
+      qty: parseInt(qty),
+      price: (typeof PRECIOS_CAJA !== 'undefined' && PRECIOS_CAJA[prod]) ? PRECIOS_CAJA[prod] : 0
+    }));
+
+  if (!items.length) {
+    statusEl.textContent = '⚠️ Sin productos para enviar';
+    statusEl.style.color = 'var(--a3)';
+    return;
+  }
+
+  // Buscar el PDV en Supabase por nombre
+  statusEl.textContent = '🔍 Buscando PDV en CRM…';
+  statusEl.style.color = 'var(--muted)';
+
+  const { data: pdvsData, error: busqErr } = await sb.from('pdvs').select('id, nombre').ilike('nombre', `%${pdvPro.name}%`).limit(1);
+  if (busqErr || !pdvsData?.length) {
+    statusEl.textContent = `⚠️ PDV "${pdvPro.name}" no encontrado en el CRM`;
+    statusEl.style.color = 'var(--a3)';
+    return;
+  }
+
+  const pdvCRM = pdvsData[0];
+  const total = items.reduce((s, i) => s + i.qty * i.price, 0);
+  const pedido = {
+    id: 'P' + Date.now(),
+    pdv_id: pdvCRM.id,
+    fecha: new Date().toISOString().split('T')[0],
+    items,
+    total,
+    condicion: 'Crédito 30 días',
+    moneda: 'USD',
+    estado: 'pendiente_cobro',
+    notas: `Generado desde Ruta 220 Pro · ${did.toUpperCase()}`,
+    carga: 'por_cargar'
+  };
+
+  statusEl.textContent = '📤 Enviando al CRM…';
+
+  const { error: pedErr } = await sb.from('pedidos').insert(pedido);
+  if (pedErr) {
+    statusEl.textContent = '⚠️ Error: ' + (pedErr.message || pedErr.code);
+    statusEl.style.color = 'var(--a3)';
+    return;
+  }
+
+  statusEl.textContent = `✅ Pedido enviado al CRM — ${items.length} producto(s), $${total.toFixed(2)}`;
+  statusEl.style.color = 'var(--a2)';
+
+  // Si el CRM está cargado en memoria, actualizar el array local también
+  if (typeof pdvs !== 'undefined' && pdvs.length) {
+    const pdvLocal = pdvs.find(p => p.id === pdvCRM.id);
+    if (pdvLocal) {
+      if (!pdvLocal.pedidos) pdvLocal.pedidos = [];
+      pdvLocal.pedidos.push({...pedido, items, total: parseFloat(total)||0, carga:'por_cargar'});
+      if (typeof renderDashboard === 'function') renderDashboard();
+    }
+  }
 }
 
 function saveProd(d,id,prod,v){
