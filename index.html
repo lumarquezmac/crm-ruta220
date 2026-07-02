@@ -1105,6 +1105,14 @@ html, body {
 
       <div class="dash-grid" id="dashKPIs"></div>
 
+      <div id="dashGruposWrap" style="display:none;margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">👥 Grupos de clientes</div>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="openModal('modalGrupos')">⚙️ Gestionar</button>
+        </div>
+        <div id="dashGrupos" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px"></div>
+      </div>
+
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📍 Resumen por zona</div>
       <div id="dashZonas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:20px"></div>
 
@@ -1296,6 +1304,13 @@ html, body {
         </div>
         <div class="form-group"><label>Portafolio activo</label>
           <select id="nPortafolio"><option>RONES + UPA</option><option>Solo RONES</option><option>Solo UPA</option></select>
+        </div>
+        <div class="form-group full">
+          <label>Grupo de cliente (opcional)</label>
+          <select id="nGrupoId" style="width:100%">
+            <option value="">— Sin grupo —</option>
+          </select>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:3px">Agrupa PDVs del mismo dueño para ver deuda consolidada.</div>
         </div>
         <div class="form-group full">
           <label>DPP (Descuento por Pago Pronto)</label>
@@ -1531,6 +1546,12 @@ html, body {
         </div>
         <div class="form-group"><label>Portafolio activo</label>
           <select id="ePortafolio"><option>RONES + UPA</option><option>Solo RONES</option><option>Solo UPA</option></select>
+        </div>
+        <div class="form-group full">
+          <label>Grupo de cliente (opcional)</label>
+          <select id="eGrupoId" style="width:100%">
+            <option value="">— Sin grupo —</option>
+          </select>
         </div>
         <div class="form-group full">
           <label>DPP (Descuento por Pago Pronto)</label>
@@ -1787,6 +1808,40 @@ html, body {
   </div>
 </div>
 
+<!-- MODAL: Gestión de Grupos -->
+<div class="modal-overlay" id="modalGrupos">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">👥 Grupos de Clientes</span>
+      <button class="modal-close" onclick="closeModal('modalGrupos')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <input type="text" id="nuevoGrupoNombre" placeholder="Nombre del grupo (ej: Familia García)" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;color:var(--text);font-size:13px;outline:none;font-family:inherit">
+        <button class="btn btn-primary" onclick="crearGrupo()">+ Crear</button>
+      </div>
+      <div id="gruposList"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalGrupos')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Detalle de Grupo -->
+<div class="modal-overlay" id="modalDetalleGrupo">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <span class="modal-title" id="detalleGrupoTitulo">👥 Grupo</span>
+      <button class="modal-close" onclick="closeModal('modalDetalleGrupo')">×</button>
+    </div>
+    <div class="modal-body" id="detalleGrupoBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalDetalleGrupo')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Registrar / Editar Visita -->
 <!-- MODAL: Alerta de Facturas por Vencer -->
 <div class="modal-overlay" id="modalAlertaVencimientos" style="z-index:9990">
@@ -2023,6 +2078,7 @@ const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
 //  ESTADO GLOBAL
 // ══════════════════════════════════════════
 let pdvs = [];
+let grupos = [];
 let actividades = JSON.parse(localStorage.getItem('crm_actividades') || '[]');
 let activePDV = null;
 let ordenFacturasActual = 'reciente';
@@ -2072,7 +2128,7 @@ async function cargarPDVs() {
     const { data: dataPDVs, error: ePDV } = await sb.from('pdvs').select('*').order('nombre');
     if (ePDV) throw ePDV;
 
-    // Cargar pedidos, facturas, pagos, mensajes, tasks, saldo_favor en paralelo
+    // Cargar todas las tablas en paralelo incluyendo grupos
     const [
       { data: pedidos },
       { data: facturas },
@@ -2080,7 +2136,8 @@ async function cargarPDVs() {
       { data: mensajes },
       { data: tasks },
       { data: saldoFavor },
-      { data: visitas }
+      { data: visitas },
+      { data: gruposData }
     ] = await Promise.all([
       sb.from('pedidos').select('*').order('created_at'),
       sb.from('facturas').select('*').order('fecha'),
@@ -2089,7 +2146,10 @@ async function cargarPDVs() {
       sb.from('tasks').select('*').order('fecha'),
       sb.from('saldo_favor').select('*').order('fecha'),
       sb.from('visitas').select('*').order('fecha', { ascending: false }),
+      sb.from('grupos').select('*').order('nombre'),
     ]);
+
+    grupos = gruposData || [];
 
     // Ensamblar objetos PDV completos
     pdvs = dataPDVs.map(p => ({
@@ -2153,7 +2213,7 @@ async function savePDV(p) {
     rif: p.rif||'', dir: p.dir||'', portafolio: p.portafolio,
     lat: p.lat||'', lng: p.lng||'',
     credito: p.credito||0, frecuencia: p.frecuencia,
-    notas: p.notas||'', status: p.status, zona: p.zona||'', dpp: p.dpp||'ninguno'
+    notas: p.notas||'', status: p.status, zona: p.zona||'', dpp: p.dpp||'ninguno', grupo_id: p.grupo_id||null
   };
   const { data, error } = await sb.from('pdvs').upsert(row, { onConflict: 'id' }).select();
   if (error) {
@@ -3251,6 +3311,10 @@ function renderCobranza() {
 
 function renderInfo() {
   if (!activePDV) return;
+  const grupo = grupos.find(g=>g.id===activePDV.grupo_id);
+  const pdvsGrupo = grupo ? pdvs.filter(p=>p.grupo_id===grupo.id) : [];
+  const deudaGrupo = pdvsGrupo.reduce((s,p)=>s+calcDeuda(p),0);
+
   document.getElementById('infoView').innerHTML = `
     <div class="form-grid">
       <div class="pdv-stat"><div class="pdv-stat-label">Tipo</div><div style="font-size:14px;font-weight:500">${activePDV.tipo}</div></div>
@@ -3261,6 +3325,16 @@ function renderInfo() {
       ${activePDV.lat && activePDV.lng ? `<div class="pdv-stat" style="grid-column:1/-1;cursor:pointer" onclick="abrirEnGoogleMaps()"><div class="pdv-stat-label">📍 Ubicación GPS</div><div style="font-size:13px;color:var(--blue)">${activePDV.lat}, ${activePDV.lng} · Ver en Maps →</div></div>` : ''}
       <div class="pdv-stat" style="grid-column:1/-1"><div class="pdv-stat-label">WhatsApp</div><div style="font-size:13px;color:var(--whatsapp)">${activePDV.tel}</div></div>
       ${activePDV.notas?`<div class="pdv-stat" style="grid-column:1/-1"><div class="pdv-stat-label">Notas</div><div style="font-size:13px;color:var(--text-dim)">${activePDV.notas}</div></div>`:''}
+      ${grupo ? `
+      <div class="pdv-stat" style="grid-column:1/-1;cursor:pointer;border:1px solid var(--amber);border-radius:8px;padding:10px" onclick="abrirDetalleGrupo('${grupo.id}')">
+        <div class="pdv-stat-label">👥 Grupo de cliente</div>
+        <div style="font-size:14px;font-weight:700;color:var(--amber-lt);margin-top:4px">${grupo.nombre}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:3px">
+          ${pdvsGrupo.length} PDV${pdvsGrupo.length!==1?'s':''} en el grupo · Deuda total del grupo:
+          <strong style="color:${deudaGrupo>0?'var(--red)':'var(--green)'}">$${deudaGrupo.toFixed(2)}</strong>
+          <span style="color:var(--amber-lt);font-size:11px;margin-left:6px">Ver grupo →</span>
+        </div>
+      </div>` : ''}
     </div>`;
 }
 
@@ -3339,6 +3413,32 @@ function toggleTickerExpand() {
 
 function renderDashboard() {
   renderTicker();
+
+  // Grupos de clientes
+  const dashGruposWrap = document.getElementById('dashGruposWrap');
+  const dashGruposCont = document.getElementById('dashGrupos');
+  if (dashGruposWrap && dashGruposCont) {
+    if (grupos.length) {
+      dashGruposWrap.style.display = 'block';
+      dashGruposCont.innerHTML = grupos.map(g => {
+        const pdvsGrupo = pdvs.filter(p=>p.grupo_id===g.id);
+        const deudaTotal = pdvsGrupo.reduce((s,p)=>s+calcDeuda(p),0);
+        const statusPeor = pdvsGrupo.some(p=>p.status==='rojo')?'rojo':pdvsGrupo.some(p=>p.status==='amarillo')?'amarillo':'verde';
+        return `
+        <div class="dash-card" style="cursor:pointer" onclick="abrirDetalleGrupo('${g.id}')">
+          <div class="dash-card-title">👥 ${g.nombre}</div>
+          <div class="dash-card-val" style="font-size:20px;color:${deudaTotal>0?'var(--red)':'var(--green)'}">$${deudaTotal.toFixed(2)}</div>
+          <div class="dash-card-sub">${pdvsGrupo.length} PDV${pdvsGrupo.length!==1?'s':''}</div>
+          <div class="dash-card-sub" style="color:${statusPeor==='rojo'?'var(--red)':statusPeor==='amarillo'?'var(--amber-lt)':'var(--green)'}">
+            ● ${statusPeor==='rojo'?'Vencido':statusPeor==='amarillo'?'Pendiente':'Al día'}
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      dashGruposWrap.style.display = 'none';
+    }
+  }
+
   const tv = pdvs.length;
   const enDeuda = pdvs.filter(p=>calcDeuda(p)>0).length;
   const td = pdvs.reduce((s,p)=>s+calcDeuda(p),0);
@@ -3500,6 +3600,7 @@ async function crearPDV() {
     tipo:document.getElementById('nTipo').value,
     zona:document.getElementById('nZona').value,
     dpp:document.getElementById('nDpp').value,
+    grupo_id:document.getElementById('nGrupoId').value||null,
     portafolio:document.getElementById('nPortafolio').value,
     credito:parseFloat(document.getElementById('nCredito').value)||0,
     frecuencia:document.getElementById('nFrecuencia').value,
@@ -3532,6 +3633,7 @@ function abrirEditPDV() {
   setSelect('eTipo', activePDV.tipo);
   setSelect('eZona', activePDV.zona||'');
   setSelect('eDpp', activePDV.dpp||'ninguno');
+  poblarSelectGrupos('eGrupoId', activePDV.grupo_id||'');
   setSelect('ePortafolio', activePDV.portafolio);
   setSelect('eFrecuencia', activePDV.frecuencia);
   setSelect('eStatus', activePDV.status);
@@ -3551,6 +3653,7 @@ async function guardarEditPDV() {
   activePDV.tipo       = document.getElementById('eTipo').value;
   activePDV.zona       = document.getElementById('eZona').value;
   activePDV.dpp        = document.getElementById('eDpp').value;
+  activePDV.grupo_id   = document.getElementById('eGrupoId').value || null;
   activePDV.portafolio = document.getElementById('ePortafolio').value;
   activePDV.credito    = parseFloat(document.getElementById('eCredito').value)||0;
   activePDV.frecuencia = document.getElementById('eFrecuencia').value;
@@ -4554,6 +4657,126 @@ async function eliminarVisita(id) {
   showToast('Visita eliminada ✓');
 }
 
+// ══════════════════════════════════════════
+//  GRUPOS DE CLIENTES
+// ══════════════════════════════════════════
+
+function poblarSelectGrupos(selectId, grupoIdActual='') {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.innerHTML = `<option value="">— Sin grupo —</option>`
+    + grupos.map(g => `<option value="${g.id}" ${g.id===grupoIdActual?'selected':''}>${g.nombre}</option>`).join('');
+}
+
+async function crearGrupo() {
+  const input = document.getElementById('nuevoGrupoNombre');
+  const nombre = input.value.trim();
+  if (!nombre) { showToast('Escribe un nombre para el grupo', true); return; }
+
+  const nuevoGrupo = { id: 'GRP' + Date.now(), nombre, notas: '' };
+  const { error } = await sb.from('grupos').insert(nuevoGrupo);
+  if (error) { showToast('Error al crear grupo: ' + error.message, true); return; }
+
+  grupos.push(nuevoGrupo);
+  input.value = '';
+  renderGruposList();
+  poblarSelectGrupos('nGrupoId');
+  poblarSelectGrupos('eGrupoId');
+  renderDashboard();
+  showToast(`Grupo "${nombre}" creado ✓`);
+}
+
+async function eliminarGrupo(id) {
+  const g = grupos.find(x=>x.id===id);
+  if (!g) return;
+  const pdvsDelGrupo = pdvs.filter(p=>p.grupo_id===id);
+  if (pdvsDelGrupo.length) {
+    if (!confirm(`El grupo "${g.nombre}" tiene ${pdvsDelGrupo.length} PDV(s) asignado(s).\n¿Eliminar el grupo? Los PDVs quedarán sin grupo.`)) return;
+    // Desasignar PDVs del grupo
+    for (const p of pdvsDelGrupo) {
+      p.grupo_id = null;
+      await sb.from('pdvs').update({ grupo_id: null }).eq('id', p.id);
+    }
+  } else {
+    if (!confirm(`¿Eliminar el grupo "${g.nombre}"?`)) return;
+  }
+  await sb.from('grupos').delete().eq('id', id);
+  grupos = grupos.filter(x=>x.id!==id);
+  renderGruposList();
+  poblarSelectGrupos('nGrupoId');
+  poblarSelectGrupos('eGrupoId');
+  renderDashboard();
+  showToast('Grupo eliminado ✓');
+}
+
+function renderGruposList() {
+  const cont = document.getElementById('gruposList');
+  if (!cont) return;
+  if (!grupos.length) {
+    cont.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;font-size:13px">Sin grupos creados todavía</div>`;
+    return;
+  }
+  cont.innerHTML = grupos.map(g => {
+    const pdvsGrupo = pdvs.filter(p=>p.grupo_id===g.id);
+    const deudaTotal = pdvsGrupo.reduce((s,p)=>s+calcDeuda(p),0);
+    return `
+    <div class="order-card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-weight:600;font-size:13px;color:var(--text)">${g.nombre}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${pdvsGrupo.length} PDV${pdvsGrupo.length!==1?'s':''} · Deuda: <strong style="color:${deudaTotal>0?'var(--red)':'var(--green)'}">$${deudaTotal.toFixed(2)}</strong></div>
+      </div>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="abrirDetalleGrupo('${g.id}')">🔍 Ver</button>
+        <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:var(--red);border-color:var(--red)" onclick="eliminarGrupo('${g.id}')">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function abrirDetalleGrupo(id) {
+  const g = grupos.find(x=>x.id===id);
+  if (!g) return;
+  const pdvsGrupo = pdvs.filter(p=>p.grupo_id===id);
+  const deudaTotal = pdvsGrupo.reduce((s,p)=>s+calcDeuda(p),0);
+  const ventasTotal = pdvsGrupo.reduce((s,p)=>s+(p.pedidos||[]).reduce((ss,x)=>ss+x.total,0),0);
+  const facsPend = pdvsGrupo.reduce((s,p)=>s+(p.facturas||[]).filter(f=>f.estado!=='pagada').length,0);
+
+  document.getElementById('detalleGrupoTitulo').textContent = `👥 ${g.nombre}`;
+  document.getElementById('detalleGrupoBody').innerHTML = `
+    <!-- KPIs consolidados -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+      <div class="pdv-stat"><div class="pdv-stat-label">PDVs en grupo</div><div class="pdv-stat-val amber">${pdvsGrupo.length}</div></div>
+      <div class="pdv-stat"><div class="pdv-stat-label">Deuda total</div><div class="pdv-stat-val ${deudaTotal>0?'red':'green'}">$${deudaTotal.toFixed(2)}</div></div>
+      <div class="pdv-stat"><div class="pdv-stat-label">Facturas pend.</div><div class="pdv-stat-val amber">${facsPend}</div></div>
+    </div>
+    <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">PDVs del grupo</div>
+    ${!pdvsGrupo.length
+      ? `<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:16px">Sin PDVs asignados a este grupo</div>`
+      : pdvsGrupo.map(p => {
+          const deuda = calcDeuda(p);
+          const facsPendPDV = (p.facturas||[]).filter(f=>f.estado!=='pagada');
+          return `
+          <div class="order-card" style="cursor:pointer;margin-bottom:8px" onclick="closeModal('modalDetalleGrupo');selectPDV('${p.id}')">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-weight:600;font-size:13px;color:var(--amber-lt)">${p.nombre}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${p.tipo} · ${p.zona||'Sin zona'}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:13px;font-weight:700;color:${deuda>0?'var(--red)':'var(--green)'}">$${deuda.toFixed(2)}</div>
+                <div style="font-size:10px;color:var(--text-muted)">${facsPendPDV.length} fact. pend.</div>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:flex;justify-content:space-between">
+      <span style="font-size:12px;color:var(--text-muted)">Ventas históricas del grupo</span>
+      <span style="font-size:14px;font-weight:700;color:var(--amber-lt)">$${ventasTotal.toFixed(2)}</span>
+    </div>`;
+
+  openModal('modalDetalleGrupo');
+}
+
 function actualizarStatusPDV() {
   if (!activePDV) return;
   const deuda = calcDeuda(activePDV);
@@ -5271,6 +5494,12 @@ function openModal(id) {
   }
   if (id === 'modalPedido') {
     document.querySelectorAll('#pedidoItems .prod-select').forEach(s => autoPrecio(s));
+  }
+  if (id === 'modalNuevoPDV') {
+    poblarSelectGrupos('nGrupoId');
+  }
+  if (id === 'modalGrupos') {
+    renderGruposList();
   }
   if (id === 'modalWahaMensaje') {
     const templates = [
