@@ -1111,6 +1111,11 @@ html, body {
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">PDVs con deuda pendiente</div>
       <div id="dashDeudas"></div>
 
+      <div id="dashVencimientosWrap" style="display:none;margin-top:20px">
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">⚠️ Facturas próximas a vencer</div>
+        <div id="dashVencimientos"></div>
+      </div>
+
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:20px 0 10px">📋 Últimas visitas registradas</div>
       <div id="dashVisitas"></div>
     </div>
@@ -1783,6 +1788,27 @@ html, body {
 </div>
 
 <!-- MODAL: Registrar / Editar Visita -->
+<!-- MODAL: Alerta de Facturas por Vencer -->
+<div class="modal-overlay" id="modalAlertaVencimientos" style="z-index:9990">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header" style="background:rgba(192,64,64,.15);border-bottom:1px solid rgba(192,64,64,.3)">
+      <span class="modal-title" style="color:var(--red)">⚠️ Facturas próximas a vencer</span>
+      <button class="modal-close" onclick="cerrarAlertaVencimientos()">×</button>
+    </div>
+    <div class="modal-body" style="padding:12px 16px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+        Las siguientes facturas vencen en los próximos <strong style="color:var(--text)">10 días</strong> o ya están vencidas.
+      </div>
+      <div id="alertaVencimientosList" style="display:flex;flex-direction:column;gap:7px;max-height:320px;overflow-y:auto"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="cerrarAlertaVencimientos()">Entendido</button>
+      <button class="btn btn-primary" onclick="cerrarAlertaVencimientos();irAlDashboard()">Ver en Dashboard</button>
+    </div>
+  </div>
+</div>
+
+
 <div class="modal-overlay" id="modalVisita">
   <div class="modal">
     <div class="modal-header">
@@ -2087,6 +2113,8 @@ async function cargarPDVs() {
     showToast('Sin conexión – datos locales', true);
   }
   hideLoading();
+  // Mostrar alerta de vencimientos solo en la carga inicial (no en Sync)
+  setTimeout(() => mostrarAlertaVencimientos(), 800);
 }
 
 // ══════════════════════════════════════════
@@ -2504,6 +2532,53 @@ async function preguntarIA() {
 }
 
 
+// ══════════════════════════════════════════
+//  ALERTA DE VENCIMIENTOS — al cargar
+// ══════════════════════════════════════════
+function mostrarAlertaVencimientos() {
+  // Solo una vez por sesión
+  if (sessionStorage.getItem('alertaVencMostrada')) return;
+
+  const porVencer = [];
+  pdvs.forEach(p => {
+    (p.facturas||[]).filter(f => f.estado !== 'pagada').forEach(f => {
+      const vc = calcVencimiento(f);
+      if (vc) porVencer.push({ pdvId: p.id, pdvNombre: p.nombre, f, vc });
+    });
+  });
+
+  if (!porVencer.length) return;
+
+  porVencer.sort((a, b) => a.vc.dias - b.vc.dias);
+
+  const iconos = { vencida:'🔴', hoy:'🔴', critico:'🔴', proximo:'🟡', aviso:'🔵' };
+
+  document.getElementById('alertaVencimientosList').innerHTML = porVencer.map(({pdvId, pdvNombre, f, vc}) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+      padding:9px 12px;border-radius:8px;cursor:pointer;
+      background:var(--surface);border:1px solid ${vc.color};gap:10px"
+      onclick="cerrarAlertaVencimientos();selectPDV('${pdvId}');setTimeout(()=>switchTabById('tabCobranza'),200)">
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--amber-lt);
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pdvNombre}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${f.nro} · ${f.condicion}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:11px;font-weight:700;color:${vc.color};white-space:nowrap">
+          ${iconos[vc.nivel]||'🔵'} ${vc.label}
+        </div>
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${f.moneda} ${f.saldo.toFixed(2)}</div>
+      </div>
+    </div>`).join('');
+
+  sessionStorage.setItem('alertaVencMostrada', '1');
+  document.getElementById('modalAlertaVencimientos').classList.add('open');
+}
+
+function cerrarAlertaVencimientos() {
+  document.getElementById('modalAlertaVencimientos').classList.remove('open');
+}
+
 async function init() {
   document.getElementById('topDate').textContent = new Date().toLocaleDateString('es-VE',{weekday:'short',day:'numeric',month:'short'});
   await cargarPDVs();
@@ -2734,6 +2809,31 @@ function calcDppVigente(pdv, factura) {
   // Ya pasó el último escalón
   const ultimo = tabla[tabla.length-1];
   return { pct: 0, diasLimite: ultimo.dias, diasTranscurridos: dias, vigente: false };
+}
+
+// ══════════════════════════════════════════
+//  VENCIMIENTO DE FACTURAS
+// ══════════════════════════════════════════
+function calcVencimiento(factura) {
+  if (!factura.vence || factura.estado === 'pagada') return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const vence = new Date(factura.vence); vence.setHours(0,0,0,0);
+  const dias = Math.ceil((vence - hoy) / 86400000);
+  let nivel, color, label;
+  if (dias < 0) {
+    nivel = 'vencida'; color = 'var(--red)'; label = `Venció hace ${Math.abs(dias)} día${Math.abs(dias)!==1?'s':''}`;
+  } else if (dias === 0) {
+    nivel = 'hoy'; color = 'var(--red)'; label = 'Vence HOY';
+  } else if (dias <= 3) {
+    nivel = 'critico'; color = 'var(--red)'; label = `Vence en ${dias} día${dias!==1?'s':''}`;
+  } else if (dias <= 7) {
+    nivel = 'proximo'; color = '#E8A855'; label = `Vence en ${dias} días`;
+  } else if (dias <= 10) {
+    nivel = 'aviso'; color = 'var(--text-muted)'; label = `Vence en ${dias} días`;
+  } else {
+    return null;
+  }
+  return { dias, nivel, color, label };
 }
 
 function calcDeuda(p) {
@@ -3075,6 +3175,12 @@ function renderCobranza() {
             </div>
           </div>
           ${f.descripcion?`<div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">${f.descripcion}</div>`:''}
+          ${(()=>{ const vc=calcVencimiento(f); return vc ? `
+          <div style="display:flex;align-items:center;gap:7px;font-size:11px;padding:5px 10px;border-radius:6px;margin-bottom:6px;background:${vc.nivel==='proximo'?'rgba(232,168,85,.1)':'rgba(192,64,64,.12)'};border:1px solid ${vc.color}">
+            <span style="font-size:14px">${vc.nivel==='vencida'?'🔴':vc.nivel==='hoy'?'🔴':vc.nivel==='critico'?'🔴':'🟡'}</span>
+            <strong style="color:${vc.color}">${vc.label}</strong>
+            <span style="color:var(--text-muted)">· vence ${f.vence}</span>
+          </div>` : ''; })()}
           ${dpp ? `
           <div style="display:flex;align-items:center;gap:7px;font-size:11px;padding:5px 8px;border-radius:6px;margin-bottom:6px;background:${dpp.vigente?'rgba(61,170,110,.12)':'rgba(192,64,64,.10)'};border:1px solid ${dpp.vigente?'var(--green)':'var(--border)'}">
             <span>${dpp.vigente?'⏳':'⛔'}</span>
@@ -3307,6 +3413,41 @@ function renderDashboard() {
           ${v.resultado?`<div style="font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.5">${v.resultado.length>120?v.resultado.slice(0,118)+'…':v.resultado}</div>`:''}
         </div>`).join('');
   }
+
+  // ── Facturas próximas a vencer (≤7 días) ──
+  const porVencer = [];
+  pdvs.forEach(p => {
+    (p.facturas||[]).filter(f=>f.estado!=='pagada').forEach(f => {
+      const vc = calcVencimiento(f);
+      if (vc) porVencer.push({ pdvId:p.id, pdvNombre:p.nombre, factura:f, vc });
+    });
+  });
+  porVencer.sort((a,b) => a.vc.dias - b.vc.dias);
+
+  const wrap = document.getElementById('dashVencimientosWrap');
+  const cont = document.getElementById('dashVencimientos');
+  if (!wrap || !cont) return;
+
+  if (!porVencer.length) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  cont.innerHTML = porVencer.map(({pdvId, pdvNombre, factura:f, vc}) => `
+    <div class="order-card" style="cursor:pointer;margin-bottom:8px;border-left:3px solid ${vc.color}"
+         onclick="selectPDV('${pdvId}');setTimeout(()=>switchTabById('tabCobranza'),200)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:600;font-size:13px;color:var(--amber-lt)">${pdvNombre}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${f.nro} · ${f.condicion}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:12px;font-weight:700;color:${vc.color}">${vc.label}</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text)">${f.moneda} ${f.saldo.toFixed(2)}</div>
+        </div>
+      </div>
+    </div>`).join('');
 }
 
 function renderRightPanel() {
