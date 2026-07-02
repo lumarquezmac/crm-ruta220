@@ -1307,9 +1307,10 @@ html, body {
         </div>
         <div class="form-group full">
           <label>Grupo de cliente (opcional)</label>
-          <select id="nGrupoId" style="width:100%">
-            <option value="">— Sin grupo —</option>
-          </select>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="nGrupoId" style="flex:1"></select>
+            <button type="button" class="btn btn-ghost" style="font-size:11px;padding:6px 10px;white-space:nowrap" onclick="crearGrupoInline('nGrupoId')">+ Nuevo grupo</button>
+          </div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:3px">Agrupa PDVs del mismo dueño para ver deuda consolidada.</div>
         </div>
         <div class="form-group full">
@@ -1549,9 +1550,10 @@ html, body {
         </div>
         <div class="form-group full">
           <label>Grupo de cliente (opcional)</label>
-          <select id="eGrupoId" style="width:100%">
-            <option value="">— Sin grupo —</option>
-          </select>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="eGrupoId" style="flex:1"></select>
+            <button type="button" class="btn btn-ghost" style="font-size:11px;padding:6px 10px;white-space:nowrap" onclick="crearGrupoInline('eGrupoId')">+ Nuevo grupo</button>
+          </div>
         </div>
         <div class="form-group full">
           <label>DPP (Descuento por Pago Pronto)</label>
@@ -4666,6 +4668,28 @@ function poblarSelectGrupos(selectId, grupoIdActual='') {
   if (!sel) return;
   sel.innerHTML = `<option value="">— Sin grupo —</option>`
     + grupos.map(g => `<option value="${g.id}" ${g.id===grupoIdActual?'selected':''}>${g.nombre}</option>`).join('');
+}
+
+async function crearGrupoInline(selectId) {
+  const nombre = prompt('Nombre del nuevo grupo:');
+  if (!nombre || !nombre.trim()) return;
+
+  const nuevoGrupo = { id: 'GRP' + Date.now(), nombre: nombre.trim(), notas: '' };
+  const { error } = await sb.from('grupos').insert(nuevoGrupo);
+  if (error) { showToast('Error al crear grupo: ' + error.message, true); return; }
+
+  grupos.push(nuevoGrupo);
+
+  // Actualizar ambos selects y seleccionar el nuevo
+  poblarSelectGrupos('nGrupoId');
+  poblarSelectGrupos('eGrupoId');
+
+  // Seleccionar el recién creado en el select que disparó la acción
+  const sel = document.getElementById(selectId);
+  if (sel) sel.value = nuevoGrupo.id;
+
+  renderDashboard();
+  showToast(`Grupo "${nuevoGrupo.nombre}" creado ✓`);
 }
 
 async function crearGrupo() {
