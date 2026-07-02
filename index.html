@@ -1083,13 +1083,13 @@ html, body {
           <span style="font-size:18px">✨</span>
           <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px">Pregúntale a la IA sobre tu ruta</span>
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Ej: "¿qué PDVs llevan más de 15 días sin pagar?" · "¿cuál es mi PDV con más deuda?" · "resume mi cobranza pendiente"</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Ej: "¿qué PDVs del miércoles tienen deuda pendiente?" · "¿cuánto cobré esta semana en Pro?" · "¿qué tareas tengo pendientes en Pampatar?" · "resume mi cobranza pendiente"</div>
 
         <div id="iaKeyBlock" style="margin-bottom:10px">
-          <input type="password" id="iaApiKey" placeholder="Pega tu API key de OpenRouter aquí (sk-or-...) — no se guarda"
+          <input type="password" id="iaApiKey" placeholder="Pega tu token de acceso al Worker aquí — no se guarda"
             style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;color:var(--text);font-size:12px;outline:none;font-family:inherit"
             onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border)'">
-          <div style="font-size:10px;color:var(--text-muted);margin-top:5px">🔒 Tu clave vive solo en esta pestaña, nunca se guarda ni se envía a ningún lado excepto a OpenRouter.</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:5px">🔒 Tu token vive solo en esta pestaña. La API key de Anthropic está segura en Cloudflare — nunca viaja al navegador.</div>
         </div>
 
         <div style="display:flex;gap:8px">
@@ -2335,110 +2335,173 @@ function toggleThemeCRM() {
 // ══════════════════════════════════════════
 function construirContextoIA() {
   const hoy = new Date();
-  const resumen = pdvs.map(p => {
+  const fechaHoy = hoy.toISOString().split('T')[0];
+
+  // ── MÓDULO CRM: datos de Supabase ──
+  const crm = pdvs.map(p => {
     const deuda = calcDeuda(p);
     const facturasPend = (p.facturas||[]).filter(f => f.estado !== 'pagada');
     const diasMasAntigua = facturasPend.length
       ? Math.max(...facturasPend.map(f => Math.floor((hoy - new Date(f.fecha)) / 86400000)))
       : 0;
+    const ultimaVisita = (p.visitas||[]).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha))[0];
+    const diasSinVisita = ultimaVisita
+      ? Math.floor((hoy - new Date(ultimaVisita.fecha)) / 86400000)
+      : null;
+    const tareasPend = (p.tasks||[]).filter(t=>!t.done);
+    const saldoFavor = (p.saldoFavor||[]).reduce((s,m)=>s+m.monto,0);
+    const dpp = p.dpp && p.dpp !== 'ninguno' ? p.dpp.toUpperCase() : null;
+
     return {
       nombre: p.nombre,
+      zona: p.zona || 'Sin asignar',
       tipo: p.tipo,
+      portafolio: p.portafolio,
       status: p.status,
+      dpp: dpp,
       deuda_usd: Math.round(deuda*100)/100,
       facturas_pendientes: facturasPend.length,
       dias_factura_mas_antigua: diasMasAntigua,
+      saldo_a_favor_usd: Math.round(saldoFavor*100)/100,
       total_pedidos: (p.pedidos||[]).length,
       ventas_total_usd: Math.round((p.pedidos||[]).reduce((s,x)=>s+x.total,0)*100)/100,
+      tareas_pendientes: tareasPend.map(t=>t.texto||t.text||''),
+      ultima_visita: ultimaVisita ? {
+        fecha: ultimaVisita.fecha,
+        tipo: ultimaVisita.tipo,
+        dias_atras: diasSinVisita,
+        proxima_accion: ultimaVisita.proximaAccion||'',
+        proxima_fecha: ultimaVisita.proximaFecha||'',
+      } : null,
     };
   });
-  return JSON.stringify(resumen);
-}
 
-async function llamarOpenRouter(apiKey, systemPrompt, pregunta, modelo) {
-  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': window.location.href,
-      'X-Title': 'Suite Ruta 220'
-    },
-    body: JSON.stringify({
-      model: modelo,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: pregunta }
-      ]
-    })
-  });
+  // ── MÓDULO RUTA 220 PRO: datos de localStorage ──
+  let pro = null;
+  try {
+    const proData = JSON.parse(localStorage.getItem('r220pro_v1') || '{}');
+    const diasLabels = {lun:'LUNES',mar:'MARTES',mie:'MIÉRCOLES',jue:'JUEVES',vie:'VIERNES'};
+    const rutero = [];
 
-  const data = await resp.json().catch(()=>({}));
+    Object.entries(diasLabels).forEach(([id, label]) => {
+      const dia = proData[id];
+      if (!dia || !dia.pdvs || !dia.pdvs.length) return;
 
-  if (!resp.ok || data?.error) {
-    const msg = data?.error?.message || data?.error || `HTTP ${resp.status}`;
-    const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
-    err.raw = data;
-    throw err;
+      const pdvsDia = dia.pdvs.map(pdv => {
+        // Sumar cajas pedidas por categoría
+        const pedidoResumen = {};
+        let totalCajas = 0;
+        if (pdv.prods) {
+          Object.entries(pdv.prods).forEach(([sku, cant]) => {
+            if (cant > 0) { pedidoResumen[sku] = cant; totalCajas += cant; }
+          });
+        }
+        return {
+          nombre: pdv.name,
+          visita: pdv.visita || 'pendiente',
+          cobro_planificado: pdv.cobro_planif || false,
+          cobro_usd: parseFloat(pdv.cobro_usd)||0,
+          cobro_bs: parseFloat(pdv.cobro_bs)||0,
+          total_cajas_pedidas: totalCajas,
+          productos_pedidos: totalCajas > 0 ? pedidoResumen : null,
+          novedad: pdv.novedad || '',
+        };
+      });
+
+      const totalCobroUSD = pdvsDia.reduce((s,p)=>s+p.cobro_usd,0);
+      const visitados = pdvsDia.filter(p=>p.visita==='visitado').length;
+      const pendientes = pdvsDia.filter(p=>p.visita==='pendiente').length;
+
+      rutero.push({
+        dia: label,
+        pdvs: pdvsDia,
+        resumen: {
+          total_pdvs: pdvsDia.length,
+          visitados,
+          pendientes,
+          total_cobro_usd: Math.round(totalCobroUSD*100)/100,
+        }
+      });
+    });
+
+    // Configuración global (tasa BCV)
+    const g = proData._g || {};
+
+    pro = {
+      tasa_bcv: g.tasa || '493.38',
+      fecha_referencia: g.fecha || fechaHoy,
+      rutero_semanal: rutero,
+      resumen_semana: {
+        dias_con_datos: rutero.length,
+        total_pdvs_planificados: rutero.reduce((s,d)=>s+d.resumen.total_pdvs,0),
+        total_visitados: rutero.reduce((s,d)=>s+d.resumen.visitados,0),
+        total_cobro_semana_usd: Math.round(rutero.reduce((s,d)=>s+d.resumen.total_cobro_usd,0)*100)/100,
+      }
+    };
+  } catch(e) {
+    pro = { error: 'No se pudieron leer los datos de Ruta 220 Pro' };
   }
 
-  return data?.choices?.[0]?.message?.content;
+  return JSON.stringify({ crm, pro }, null, 0);
 }
 
-async function preguntarIA() {
-  const apiKey   = document.getElementById('iaApiKey').value.trim();
-  const pregunta = document.getElementById('iaPregunta').value.trim();
-  const out       = document.getElementById('iaRespuesta');
-  const btn       = document.getElementById('btnPreguntarIA');
+// ══════════════════════════════════════════
+//  ASISTENTE IA — Cloudflare Worker (Claude)
+//  La API key de Anthropic vive en Cloudflare,
+//  nunca en el navegador.
+// ══════════════════════════════════════════
 
-  if (!apiKey)   { showToast('Pega tu API key de OpenRouter primero', true); return; }
+// URL del Worker — actualiza esto con tu URL real de Cloudflare después de desplegarlo
+const WORKER_URL = 'https://suite-ruta220.lumarquez220.workers.dev';
+
+async function preguntarIA() {
+  const token   = document.getElementById('iaApiKey').value.trim();
+  const pregunta = document.getElementById('iaPregunta').value.trim();
+  const out      = document.getElementById('iaRespuesta');
+  const btn      = document.getElementById('btnPreguntarIA');
+
+  if (!token)   { showToast('Pega tu token de acceso primero', true); return; }
   if (!pregunta) { showToast('Escribe una pregunta', true); return; }
 
   btn.disabled = true;
   btn.textContent = '⏳ Pensando…';
   out.style.display = 'block';
-  out.textContent = 'Consultando…';
+  out.textContent = 'Consultando a Claude…';
 
   const contexto = construirContextoIA();
-  const fechaHoy = new Date().toLocaleDateString('es-VE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
 
-  const systemPrompt = `Eres un asistente de análisis de ventas para un Ejecutivo de Ventas de Ron Santa Teresa en Isla de Margarita, Venezuela. Hoy es ${fechaHoy}. A continuación tienes datos JSON reales de sus puntos de venta (PDVs): nombre, tipo de negocio, estado (verde=al día, amarillo=pendiente, rojo=vencido), deuda en USD, cantidad de facturas pendientes, días desde la factura más antigua sin pagar, total de pedidos históricos y ventas totales en USD.
+  try {
+    const resp = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Auth-Token': token,
+      },
+      body: JSON.stringify({ pregunta, contexto })
+    });
 
-DATOS:
-${contexto}
+    const data = await resp.json().catch(() => ({}));
 
-Responde la pregunta del usuario de forma breve, concreta y en español venezolano natural, citando nombres de PDVs y cifras exactas cuando aplique. Si la pregunta no se puede responder con estos datos, dilo claramente. No inventes información que no esté en los datos.`;
-
-  const modelosFallback = [
-    'openrouter/auto',                              // Selector automático de OpenRouter (más robusto)
-    'openai/gpt-oss-120b:free',                     // GPT-OSS 120B de OpenAI — mejor calidad gratuita actual
-    'meta-llama/llama-3.3-70b-instruct:free',       // Llama 3.3 70B — muy estable
-    'nvidia/llama-3.1-nemotron-70b-instruct:free',  // NVIDIA Nemotron — bueno en español
-    'google/gemma-3-27b-it:free',                   // Gemma 3 27B de Google
-  ];
-
-  let texto = null;
-  let ultimoError = null;
-
-  for (const modelo of modelosFallback) {
-    try {
-      texto = await llamarOpenRouter(apiKey, systemPrompt, pregunta, modelo);
-      if (texto) break;
-    } catch (err) {
-      console.error(`Fallo modelo ${modelo}:`, err.message, err.raw);
-      ultimoError = err;
+    if (!resp.ok || data?.error) {
+      throw new Error(data?.error || `HTTP ${resp.status}`);
     }
-  }
 
-  if (texto) {
-    out.textContent = texto;
-  } else {
-    out.textContent = '⚠️ Error: ' + (ultimoError?.message || 'todos los modelos fallaron') + '\n\n(revisa la consola del navegador para más detalle)';
+    out.textContent = data.respuesta || 'Sin respuesta.';
+
+    // Mostrar consumo de tokens en consola (útil para monitorear costo)
+    if (data.tokens_entrada || data.tokens_salida) {
+      console.info(`[IA] Tokens: entrada=${data.tokens_entrada} salida=${data.tokens_salida} modelo=${data.modelo}`);
+    }
+
+  } catch (err) {
+    out.textContent = '⚠️ Error: ' + err.message;
+    console.error('[IA] Error:', err);
   }
 
   btn.disabled = false;
   btn.textContent = '✨ Preguntar';
 }
+
 
 async function init() {
   document.getElementById('topDate').textContent = new Date().toLocaleDateString('es-VE',{weekday:'short',day:'numeric',month:'short'});
